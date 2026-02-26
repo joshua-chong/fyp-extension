@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#1a73e8"/>
+  
+  <!-- Ticket shape -->
+  <g transform="translate(24, 32)">
+    <!-- Ticket body -->
+    <rect x="0" y="0" width="80" height="64" rx="8" fill="white"/>
+    
+    <!-- Ticket notches -->
+    <circle cx="0" cy="32" r="8" fill="#1a73e8"/>
+    <circle cx="80" cy="32" r="8" fill="#1a73e8"/>
+    
+    <!-- Seat indicator (focus highlight) -->
+    <rect x="16" y="16" width="20" height="16" rx="4" fill="#22c55e" stroke="#16a34a" stroke-width="2"/>
+    
+    <!-- Greyed seats -->
+    <rect x="44" y="16" width="20" height="16" rx="4" fill="#e5e7eb"/>
+    <rect x="16" y="40" width="20" height="16" rx="4" fill="#e5e7eb"/>
+    <rect x="44" y="40" width="20" height="16" rx="4" fill="#e5e7eb"/>
+  </g>
+  
+  <!-- Accessibility symbol hint -->
+  <circle cx="100" cy="100" r="16" fill="#22c55e"/>
+  <text x="100" y="106" text-anchor="middle" font-size="18" fill="white" font-weight="bold">A</text>
+</svg>

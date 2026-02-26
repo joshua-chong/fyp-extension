@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SEAT FINDER</title>
+  <style>
+    :root {
+      --bg-0: #0d0f14;
+      --bg-1: #13151c;
+      --bg-2: #1a1d27;
+      --bg-3: #222633;
+      --bg-hover: #272b3a;
+      --border: #2a2e3d;
+      --border-subtle: #1f222e;
+      --text-1: #e4e6eb;
+      --text-2: #8b90a0;
+      --text-3: #555a6b;
+      --accent: #3ecf8e;
+      --accent-hover: #34b87e;
+      --accent-dim: rgba(62,207,142,0.10);
+      --accent-border: rgba(62,207,142,0.20);
+      --accent-text: #0d0f14;
+      --danger: #ef4444;
+      --danger-dim: rgba(239,68,68,0.10);
+      --warn: #f59e0b;
+      --r: 8px;
+      --r-sm: 6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Montserrat', 'Proxima Nova', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
+      width: 400px; max-height: 900px; overflow-y: auto;
+      background: var(--bg-0); color: var(--text-1); line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::-webkit-scrollbar { width: 3px; }
+    body::-webkit-scrollbar-track { background: transparent; }
+    body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* ── Icons ── */
+    .ic { width: 16px; height: 16px; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+    .ic svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .ic-sm { width: 14px; height: 14px; }
+    .ic-lg { width: 20px; height: 20px; }
+
+    /* ── Header ── */
+    .hdr {
+      background: var(--bg-1); border-bottom: 1px solid var(--border);
+      padding: 12px 18px; display: flex; align-items: center; gap: 10px;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .hdr-logo {
+      width: 30px; height: 30px; background: var(--accent); border-radius: var(--r-sm);
+      display: flex; align-items: center; justify-content: center; color: var(--accent-text); flex-shrink: 0;
+    }
+    .hdr h1 { font-size: 14px; font-weight: 600; color: var(--text-1); }
+    .hdr h1 span { font-weight: 400; color: var(--text-3); font-size: 14px; margin-left: 5px; }
+    .hdr p { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+    .hdr-end { margin-left: auto; display: flex; gap: 4px; }
+    .hdr-btn {
+      background: none; border: none; color: var(--text-3); cursor: pointer;
+      padding: 5px; border-radius: 4px; display: flex; transition: .15s;
+    }
+    .hdr-btn:hover { color: var(--text-1); background: var(--bg-3); }
+
+    /* ── User banner ── */
+    .ubanner {
+      background: var(--accent-dim); border-bottom: 1px solid var(--border);
+      padding: 7px 18px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .ubanner-left { display: flex; align-items: center; gap: 7px; }
+    .ubanner-av {
+      width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+      color: var(--accent-text); display: flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 700;
+    }
+    .ubanner-name { font-size: 14px; font-weight: 500; color: var(--accent); }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; background: var(--bg-1); border-bottom: 1px solid var(--border); }
+    .tab {
+      flex: 1; padding: 9px 0; text-align: center; font-size: 14px; font-weight: 500;
+      color: var(--text-3); background: none; border: none; cursor: pointer;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      display: flex; align-items: center; justify-content: center; gap: 5px;
+      transition: .15s; font-family: inherit;
+    }
+    .tab:hover { color: var(--text-2); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* ── Panels / sections ── */
+    .tpanel { display: none; }
+    .tpanel.active { display: block; }
+    .pcontent { padding: 14px 18px; }
+    .sect { margin-bottom: 16px; }
+    .sect:last-child { margin-bottom: 0; }
+    .sect-hdr {
+      display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
+      padding-bottom: 7px; border-bottom: 1px solid var(--border-subtle);
+    }
+    .sect-hdr .ic { color: var(--accent); }
+    .sect-title {
+      font-size: 14px; font-weight: 600; color: var(--text-2);
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+
+    /* ── Form controls ── */
+    .fg { margin-bottom: 9px; }
+    .fl { display: block; font-size: 14px; font-weight: 600; color: var(--text-3); margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
+    .fi, .fta, .fs {
+      width: 100%; padding: 8px 10px; font-size: 14px;
+      border: 1px solid var(--border); border-radius: var(--r-sm);
+      background: var(--bg-2); color: var(--text-1); font-family: inherit; transition: .15s;
+    }
+    .fi::placeholder, .fta::placeholder { color: var(--text-3); }
+    .fi:focus, .fta:focus, .fs:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    .fta { resize: vertical; min-height: 60px; }
+    .fhint { font-size: 14px; color: var(--text-3); margin-top: 2px; }
+    .fs {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23555a6b' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 9px center; padding-right: 26px;
+    }
+    optgroup { font-weight: 600; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      padding: 8px 14px; font-size: 14px; font-weight: 600; border: none;
+      border-radius: var(--r-sm); cursor: pointer; font-family: inherit; transition: .15s; width: 100%;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn-p { background: var(--accent); color: var(--accent-text); }
+    .btn-p:hover { background: var(--accent-hover); }
+    .btn-d { background: var(--danger); color: #fff; }
+    .btn-d:hover { opacity: .9; }
+    .btn-o { background: transparent; color: var(--text-2); border: 1px solid var(--border); }
+    .btn-o:hover { border-color: var(--text-3); color: var(--text-1); }
+    .btn-g { background: none; color: var(--text-3); padding: 4px 7px; font-size: 14px; width: auto; font-family: inherit; }
+    .btn-g:hover { color: var(--accent); background: var(--accent-dim); }
+    .btn-sm { padding: 5px 9px; font-size: 14px; }
+    .btn-row { display: flex; gap: 7px; margin-top: 9px; }
+    .btn-row .btn { flex: 1; }
+    .lbtn { background: none; border: none; color: var(--accent); font-size: 14px; cursor: pointer; font-family: inherit; }
+    .lbtn:hover { text-decoration: underline; }
+
+    /* ── Toggle ── */
+    .trow { display: flex; align-items: center; justify-content: space-between; padding: 5px 0; }
+    .trow-label { font-size: 14px; color: var(--text-2); }
+    .tswitch { position: relative; width: 38px; height: 20px; }
+    .tswitch input { opacity: 0; width: 0; height: 0; }
+    .tslider {
+      position: absolute; cursor: pointer; inset: 0;
+      background: var(--bg-3); border: 1px solid var(--border);
+      border-radius: 20px; transition: .2s;
+    }
+    .tslider::before {
+      content: ''; position: absolute; width: 14px; height: 14px;
+      left: 2px; bottom: 2px; background: var(--text-3);
+      border-radius: 50%; transition: .2s;
+    }
+    .tswitch input:checked + .tslider { background: var(--accent); border-color: var(--accent); }
+    .tswitch input:checked + .tslider::before { transform: translateX(18px); background: var(--accent-text); }
+
+    /* ── Range ── */
+    .rctl { padding: 5px 0; }
+    .rctl-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .rctl-lbl { font-size: 14px; color: var(--text-2); }
+    .rctl-val { font-size: 14px; font-weight: 600; color: var(--accent); background: var(--accent-dim); padding: 1px 7px; border-radius: 4px; }
+    input[type="range"] { width: 100%; height: 3px; background: var(--border); border-radius: 2px; outline: none; -webkit-appearance: none; }
+    input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--accent); border-radius: 50%; cursor: pointer; border: 2px solid var(--bg-0); }
+
+    /* ── Previews ── */
+    .swatches { display: flex; gap: 6px; margin-top: 7px; padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--r-sm); align-items: center; }
+    .swatch { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; }
+    .swatches-desc { font-size: 14px; color: var(--text-3); margin-left: 3px; }
+    .fprev { margin-top: 7px; padding: 17px; background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--r-sm); text-align: center; }
+    .fprev-text { font-size: 14px; color: var(--text-1); margin-bottom: 3px; }
+    .fprev-label { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: .5px; }
+
+    /* ── Info box ── */
+    .ibox { background: var(--bg-2); border: 1px solid var(--border-subtle); border-radius: var(--r); padding: 9px 11px; margin-top: 7px; }
+    .ibox p { font-size: 10px; color: var(--text-3); line-height: 1.5; }
+    .ibox strong { color: var(--text-2); }
+
+    /* ── Status ── */
+    .sts { padding: 7px 10px; border-radius: var(--r-sm); font-size: 10px; margin-top: 8px; display: none; }
+    .sts.show { display: block; }
+    .sts.ok { background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-border); }
+    .sts.err { background: var(--danger-dim); color: var(--danger); border: 1px solid rgba(239,68,68,.2); }
+
+    /* ── Auth ── */
+    .aview { display: none; }
+    .aview.active { display: block; }
+    .adiv { text-align: center; margin: 12px 0; font-size: 10px; color: var(--text-3); position: relative; }
+    .adiv::before, .adiv::after { content: ''; position: absolute; top: 50%; width: 38%; height: 1px; background: var(--border); }
+    .adiv::before { left: 0; }
+    .adiv::after { right: 0; }
+
+    /* ── Journal ── */
+    .jentry { border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px; margin-bottom: 7px; background: var(--bg-1); transition: .15s; }
+    .jentry:hover { border-color: var(--accent-border); }
+    .jentry-hdr { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+    .jentry-title { font-size: 12px; font-weight: 600; color: var(--text-1); }
+    .jentry-date { font-size: 9px; color: var(--text-3); white-space: nowrap; }
+    .jentry-venue { font-size: 10px; color: var(--text-2); margin-top: 1px; }
+    .jentry-ratings { display: flex; gap: 9px; margin-top: 5px; flex-wrap: wrap; }
+    .jrating { font-size: 9px; color: var(--text-3); }
+    .jrating-stars { color: var(--warn); letter-spacing: 1px; }
+    .jentry-notes { font-size: 10px; color: var(--text-2); margin-top: 5px; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .jentry-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
+    .jtag { font-size: 8px; padding: 2px 7px; border-radius: 10px; background: var(--accent-dim); color: var(--accent); font-weight: 500; }
+    .jactions { display: flex; gap: 3px; margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--border-subtle); }
+    .jempty { text-align: center; padding: 22px 14px; color: var(--text-3); }
+    .jempty p { font-size: 11px; }
+
+    /* ── Stars ── */
+    .stars { display: flex; gap: 1px; }
+    .star-btn { background: none; border: none; cursor: pointer; font-size: 16px; padding: 0; color: var(--border); transition: .1s; }
+    .star-btn.filled { color: var(--warn); }
+    .star-btn:hover { color: var(--warn); }
+
+    /* ── Tags ── */
+    .tgrid { display: flex; flex-wrap: wrap; gap: 4px; }
+    .tchk { display: none; }
+    .tlbl { font-size: 9px; padding: 3px 9px; border-radius: 10px; border: 1px solid var(--border); color: var(--text-3); cursor: pointer; transition: .15s; user-select: none; }
+    .tchk:checked + .tlbl { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+    /* ── Footer ── */
+    .ftr { background: var(--bg-1); border-top: 1px solid var(--border-subtle); padding: 7px 18px; text-align: center; }
+    .ftr p { font-size: 8px; color: var(--text-3); letter-spacing: .04em; }
+
+    .hidden { display: none !important; }
+    .tc { text-align: center; }
+
+    /* ══════════════════════════════════════════════════════════
+     * PROFILES TAB STYLES
+     * ══════════════════════════════════════════════════════════ */
+
+    /* Profile cards */
+    .prof-card {
+      border: 1px solid var(--border); border-radius: var(--r); padding: 10px 12px;
+      margin-bottom: 7px; background: var(--bg-1); transition: .15s;
+    }
+    .prof-card:hover { border-color: var(--accent-border); }
+    .prof-card.prof-active { border-color: var(--accent); background: rgba(62,207,142,0.04); }
+
+    .prof-card-hdr { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .prof-card-name { font-size: 12px; font-weight: 600; color: var(--text-1); }
+    .prof-card-badge {
+      font-size: 8px; padding: 2px 7px; border-radius: 10px; font-weight: 600;
+      white-space: nowrap; flex-shrink: 0;
+    }
+    .prof-card-badge.builtin { background: rgba(96, 165, 250, 0.12); color: #60a5fa; }
+    .prof-card-badge.custom { background: var(--accent-dim); color: var(--accent); }
+    .prof-card-badge.active-badge { background: var(--accent); color: var(--accent-text); }
+
+    .prof-card-desc { font-size: 10px; color: var(--text-3); margin-top: 3px; line-height: 1.4; }
+
+    .prof-card-settings {
+      display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px;
+    }
+    .prof-setting-chip {
+      font-size: 8px; padding: 2px 6px; border-radius: 4px;
+      background: var(--bg-3); color: var(--text-3); white-space: nowrap;
+    }
+
+    .prof-card-actions {
+      display: flex; gap: 3px; margin-top: 7px; padding-top: 7px;
+      border-top: 1px solid var(--border-subtle);
+    }
+
+    /* Import/export row */
+    .io-row { display: flex; gap: 7px; margin-top: 9px; }
+    .io-row .btn { flex: 1; }
+
+    /* Profile form */
+    .prof-form { margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+
+  <!-- ════ HEADER ════ -->
+  <header class="hdr">
+    <div class="hdr-logo">
+      <span class="ic ic-lg"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg></span>
+    </div>
+    <div>
+      <h1>SEAT FINDER <span>v6.2</span></h1>
+      <p>Ticketmaster</p>
+    </div>
+    <div class="hdr-end">
+      <button class="hdr-btn" id="refreshBtn" title="Refresh">
+        <span class="ic"><svg viewBox="0 0 24 24"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ════ USER BANNER ════ -->
+  <div id="userBanner" class="ubanner hidden">
+    <div class="ubanner-left">
+      <div class="ubanner-av" id="userAvatar">?</div>
+      <span class="ubanner-name" id="userName">User</span>
+    </div>
+    <button class="btn btn-g btn-sm" id="logoutBtnTop">Log out</button>
+  </div>
+
+  <!-- ════ TABS ════ -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="settings">
+      <span class="ic ic-sm"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/></svg></span>
+      Settings
+    </button>
+    <button class="tab" data-tab="profiles">
+      <span class="ic ic-sm"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+      Profiles
+    </button>
+    <button class="tab" data-tab="journal">
+      <span class="ic ic-sm"><svg viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg></span>
+      Journal
+    </button>
+    <button class="tab" data-tab="account">
+      <span class="ic ic-sm"><svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+      Account
+    </button>
+  </nav>
+
+  <!-- ════ TAB 1: SETTINGS ════ -->
+  <div id="tab-settings" class="tpanel active">
+    <div class="pcontent">
+
+      <!-- Quick Profile Selector -->
+      <section class="sect">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+          <h2 class="sect-title">Quick Profile</h2>
+        </div>
+        <select id="quickProfileSelect" class="fs">
+          <option value="">No Profile (Manual)</option>
+        </select>
+        <p class="fhint" id="quickProfileHint">Select a sensory profile to apply all its settings at once</p>
+      </section>
+
+      <section class="sect">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg></span>
+          <h2 class="sect-title">Focus Mode</h2>
+        </div>
+        <div class="trow">
+          <label for="focusModeToggle" class="trow-label">Seat highlighting</label>
+          <label class="tswitch"><input type="checkbox" id="focusModeToggle"><span class="tslider"></span></label>
+        </div>
+        <div class="trow">
+          <label for="panelToggle" class="trow-label">Companion panel</label>
+          <label class="tswitch"><input type="checkbox" id="panelToggle" checked><span class="tslider"></span></label>
+        </div>
+      </section>
+
+      <section id="priceSection" class="sect">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          <h2 class="sect-title">Max Price</h2>
+        </div>
+        <div class="rctl">
+          <div class="rctl-hdr"><span class="rctl-lbl">Show seats up to</span><span id="priceValue" class="rctl-val">£150</span></div>
+          <input type="range" id="maxPriceSlider" min="20" max="500" step="10" value="150">
+        </div>
+      </section>
+
+      <section class="sect">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 22c-4.97 0-9-2.24-9-5v-.36C5.01 18.83 8.28 20 12 20s6.99-1.17 9-3.36V17c0 2.76-4.03 5-9 5Z"/></svg></span>
+          <h2 class="sect-title">Colour Scheme</h2>
+        </div>
+        <div class="select-control" style="padding:4px 0">
+          <select id="colourScheme" class="fs">
+            <optgroup label="Standard"><option value="default">Default</option><option value="dark">Dark Mode</option></optgroup>
+            <optgroup label="Colour Vision"><option value="deuteranopia">Colour Blind (Red-Green)</option><option value="tritanopia">Colour Blind (Blue-Yellow)</option><option value="high-contrast">High Contrast</option></optgroup>
+            <optgroup label="Sensory"><option value="muted">Muted / Calm</option></optgroup>
+          </select>
+        </div>
+        <div class="swatches" id="schemePreview">
+          <div class="swatch" id="swatch1"></div><div class="swatch" id="swatch2"></div><div class="swatch" id="swatch3"></div>
+          <span class="swatches-desc" id="schemeDescription">Standard green/grey scheme</span>
+        </div>
+      </section>
+
+      <section class="sect">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg></span>
+          <h2 class="sect-title">Typography</h2>
+        </div>
+        <div style="padding:4px 0">
+          <select id="fontFamily" class="fs">
+            <optgroup label="Standard"><option value="default">Default</option><option value="arial">Arial</option><option value="verdana">Verdana</option><option value="tahoma">Tahoma</option></optgroup>
+            <optgroup label="Accessibility"><option value="opendyslexic">OpenDyslexic</option><option value="atkinson">Atkinson Hyperlegible</option><option value="comic-sans">Comic Sans</option></optgroup>
+            <optgroup label="Serif"><option value="georgia">Georgia</option><option value="times">Times New Roman</option></optgroup>
+          </select>
+        </div>
+        <div class="fprev"><div id="fontPreviewText" class="fprev-text">The quick brown fox jumps over the lazy dog</div><div class="fprev-label">Preview</div></div>
+        <div class="rctl"><div class="rctl-hdr"><span class="rctl-lbl">Size</span><span id="fontSizeValue" class="rctl-val">16px</span></div><input type="range" id="fontSizeSlider" min="12" max="28" step="1" value="16"></div>
+        <div class="rctl"><div class="rctl-hdr"><span class="rctl-lbl">Line spacing</span><span id="lineSpacingValue" class="rctl-val">1.5x</span></div><input type="range" id="lineSpacingSlider" min="1.5" max="3" step="0.1" value="1.5"></div>
+      </section>
+
+      <!-- MCDA Heatmap -->
+      <section class="sect" id="mcdaSection">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
+          <h2 class="sect-title">Seat Heatmap (MCDA)</h2>
+        </div>
+        <div class="trow">
+          <label for="mcdaToggle" class="trow-label">Score &amp; colour-code seats</label>
+          <label class="tswitch"><input type="checkbox" id="mcdaToggle"><span class="tslider"></span></label>
+        </div>
+        <p class="fhint" style="margin-bottom:10px;">Ranks seats by your priorities and recolours the map as a heatmap.</p>
+        <div id="mcdaWeightsSection" class="hidden">
+          <p class="fhint" style="margin-bottom:6px;font-weight:600;color:var(--text-1);">Quick presets</p>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px; font-size: 12px;" id="mcdaPresetBtns">
+            <button class="btn btn-o btn-sm" data-mcda-preset="balanced" style="flex:1;min-width:0;">Balanced</button>
+            <button class="btn btn-o btn-sm" data-mcda-preset="cheapest" style="flex:1;min-width:0;">Cheapest</button>
+            <button class="btn btn-o btn-sm" data-mcda-preset="bestView" style="flex:1;min-width:0;">Best view</button>
+            <button class="btn btn-o btn-sm" data-mcda-preset="closeUp" style="flex:1;min-width:0;">Close up</button>
+            <button class="btn btn-o btn-sm" data-mcda-preset="easyExit" style="flex:1;min-width:0;">Easy exit</button>
+          </div>
+          <p class="fhint" style="margin-bottom:6px;font-weight:600;color:var(--text-1);">Custom weights</p>
+          <div id="mcdaSliderList" style="display:flex;flex-direction:column;gap:6px;">
+            <div class="rctl"><div class="rctl-hdr"><span class="rctl-lbl">Price</span><span id="mcdaPriceDisp" class="rctl-val">25%</span></div>
+              <input type="range" id="mcdaPriceSlider" min="0" max="100" step="5" value="25" data-key="price"></div>
+            <div class="rctl"><div class="rctl-hdr"><span class="rctl-lbl">View quality</span><span id="mcdaViewDisp" class="rctl-val">25%</span></div>
+              <input type="range" id="mcdaViewSlider" min="0" max="100" step="5" value="25" data-key="viewQuality"></div>
+            <div class="rctl"><div class="rctl-hdr"><span class="rctl-lbl">Proximity</span><span id="mcdaProxDisp" class="rctl-val">25%</span></div>
+              <input type="range" id="mcdaProxSlider" min="0" max="100" step="5" value="25" data-key="proximity"></div>
+            <div class="rctl"><div class="rctl-hdr"><span class="rctl-lbl">Aisle access</span><span id="mcdaAisleDisp" class="rctl-val">25%</span></div>
+              <input type="range" id="mcdaAisleSlider" min="0" max="100" step="5" value="25" data-key="aisleAccess"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="settingsStatus" class="sts" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- ════ TAB 2: PROFILES ════ -->
+  <div id="tab-profiles" class="tpanel">
+    <div class="pcontent">
+      <section class="sect">
+        <div class="sect-hdr">
+          <span class="ic"><svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+          <h2 class="sect-title">Sensory Profiles</h2>
+        </div>
+        <p class="fhint" style="margin-bottom:10px;">Profiles bundle all settings (colour scheme, typography, toggles) into one-click presets. Select a profile to instantly apply all its settings.</p>
+
+        <!-- Profile list -->
+        <div id="profileList"></div>
+
+        <!-- Create new profile -->
+        <div id="profileFormWrapper" class="hidden prof-form">
+          <div class="fg">
+            <label class="fl" for="profileNameInput">Profile Name</label>
+            <input type="text" class="fi" id="profileNameInput" placeholder="e.g. Concert Mode">
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-p btn-sm" id="profileSaveBtn">Save Profile</button>
+            <button class="btn btn-o btn-sm" id="profileCancelBtn">Cancel</button>
+          </div>
+        </div>
+        <button class="btn btn-o" id="profileCreateBtn" style="margin-top:7px;">
+          + Create from Current Settings
+        </button>
+
+        <!-- Import / Export -->
+        <div class="io-row">
+          <button class="btn btn-o btn-sm" id="profileExportBtn">
+            Export JSON
+          </button>
+          <button class="btn btn-o btn-sm" id="profileImportBtn">
+            Import JSON
+          </button>
+          <input type="file" id="profileImportInput" accept=".json,application/json" class="hidden">
+        </div>
+      </section>
+      <div id="profilesStatus" class="sts" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- ════ TAB 3: JOURNAL ════ -->
+  <div id="tab-journal" class="tpanel">
+    <div class="pcontent">
+      <div id="journalLoginPrompt" class="jempty">
+        <span class="ic ic-lg" style="display:block;margin:0 auto 6px;color:var(--text-3)"><svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+        <p>Log in to save your concert experiences</p>
+        <button class="btn btn-p btn-sm" style="margin-top:8px;width:auto;padding:7px 18px;" id="journalGoLogin">Go to Account</button>
+      </div>
+      <div id="journalContent" class="hidden">
+        <button class="btn btn-p" style="margin-bottom:11px;" id="addEntryBtn">+ New Entry</button>
+        <div id="journalForm" class="hidden" style="margin-bottom:12px;">
+          <section class="sect">
+            <div class="sect-hdr">
+              <span class="ic"><svg viewBox="0 0 24 24"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></span>
+              <h2 class="sect-title" id="journalFormTitle">New Entry</h2>
+            </div>
+            <div class="fg"><label class="fl" for="entryEventName">Event / Artist *</label><input type="text" class="fi" id="entryEventName" placeholder="e.g. Take That - The Circus Live"></div>
+            <div class="fg"><label class="fl" for="entryVenue">Venue</label><input type="text" class="fi" id="entryVenue" placeholder="e.g. St Marys Stadium, Southampton"></div>
+            <div class="fg"><label class="fl" for="entryDate">Date</label><input type="date" class="fi" id="entryDate"></div>
+            <div class="fg"><label class="fl" for="entrySection">Section / Seat</label><input type="text" class="fi" id="entrySection" placeholder="e.g. Front Standing Area B"></div>
+            <div class="fg"><label class="fl">Overall</label><div class="stars" id="ratingOverall" data-field="ratingOverall"><button class="star-btn" data-value="1" type="button">&#9733;</button><button class="star-btn" data-value="2" type="button">&#9733;</button><button class="star-btn" data-value="3" type="button">&#9733;</button><button class="star-btn" data-value="4" type="button">&#9733;</button><button class="star-btn" data-value="5" type="button">&#9733;</button></div></div>
+            <div class="fg"><label class="fl">Sensory Comfort</label><div class="stars" id="ratingSensory" data-field="ratingSensory"><button class="star-btn" data-value="1" type="button">&#9733;</button><button class="star-btn" data-value="2" type="button">&#9733;</button><button class="star-btn" data-value="3" type="button">&#9733;</button><button class="star-btn" data-value="4" type="button">&#9733;</button><button class="star-btn" data-value="5" type="button">&#9733;</button></div><p class="fhint">Noise, lighting, crowd comfort</p></div>
+            <div class="fg"><label class="fl">Accessibility</label><div class="stars" id="ratingAccessibility" data-field="ratingAccessibility"><button class="star-btn" data-value="1" type="button">&#9733;</button><button class="star-btn" data-value="2" type="button">&#9733;</button><button class="star-btn" data-value="3" type="button">&#9733;</button><button class="star-btn" data-value="4" type="button">&#9733;</button><button class="star-btn" data-value="5" type="button">&#9733;</button></div><p class="fhint">Staff, entry, seating, facilities</p></div>
+            <div class="fg"><label class="fl">Tags</label><div class="tgrid">
+              <input type="checkbox" class="tchk" id="tag-loud" value="loud"><label class="tlbl" for="tag-loud">Loud</label>
+              <input type="checkbox" class="tchk" id="tag-crowded" value="crowded"><label class="tlbl" for="tag-crowded">Crowded</label>
+              <input type="checkbox" class="tchk" id="tag-good-view" value="good-view"><label class="tlbl" for="tag-good-view">Good View</label>
+              <input type="checkbox" class="tchk" id="tag-accessible" value="accessible"><label class="tlbl" for="tag-accessible">Accessible</label>
+              <input type="checkbox" class="tchk" id="tag-calm" value="calm"><label class="tlbl" for="tag-calm">Calm</label>
+              <input type="checkbox" class="tchk" id="tag-bright-lights" value="bright-lights"><label class="tlbl" for="tag-bright-lights">Bright Lights</label>
+              <input type="checkbox" class="tchk" id="tag-easy-exit" value="easy-exit"><label class="tlbl" for="tag-easy-exit">Easy Exit</label>
+              <input type="checkbox" class="tchk" id="tag-would-return" value="would-return"><label class="tlbl" for="tag-would-return">Would Return</label>
+            </div></div>
+            <div class="fg"><label class="fl" for="entryNotes">Notes</label><textarea class="fta" id="entryNotes" placeholder="Sensory triggers, best entry route, good spots..."></textarea></div>
+            <input type="hidden" id="entryEditId">
+            <div class="btn-row"><button class="btn btn-p" id="saveEntryBtn">Save</button><button class="btn btn-o" id="cancelEntryBtn">Cancel</button></div>
+          </section>
+        </div>
+        <div id="journalEntries"></div>
+      </div>
+      <div id="journalStatus" class="sts" role="alert"></div>
+    </div>
+  </div>
+
+  <!-- ════ TAB 4: ACCOUNT ════ -->
+  <div id="tab-account" class="tpanel">
+    <div class="pcontent">
+      <div id="loginView" class="aview active">
+        <section class="sect">
+          <div class="sect-hdr">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg></span>
+            <h2 class="sect-title">Log In</h2>
+          </div>
+          <div class="fg"><label class="fl" for="loginEmail">Email</label><input type="email" class="fi" id="loginEmail" placeholder="you@example.com"></div>
+          <div class="fg"><label class="fl" for="loginPassword">Password</label><input type="password" class="fi" id="loginPassword" placeholder="Your password"></div>
+          <button class="btn btn-p" id="loginBtn">Log In</button>
+          <div class="adiv">or</div>
+          <div class="tc"><button class="lbtn" id="showRegisterBtn">Create a new account</button></div>
+        </section>
+        <div class="ibox"><p><strong>Why log in?</strong> Your journal and settings persist across sessions.</p></div>
+      </div>
+      <div id="registerView" class="aview">
+        <section class="sect">
+          <div class="sect-hdr">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg></span>
+            <h2 class="sect-title">Create Account</h2>
+          </div>
+          <div class="fg"><label class="fl" for="registerName">Name</label><input type="text" class="fi" id="registerName" placeholder="Display name"></div>
+          <div class="fg"><label class="fl" for="registerEmail">Email</label><input type="email" class="fi" id="registerEmail" placeholder="you@example.com"></div>
+          <div class="fg"><label class="fl" for="registerPassword">Password</label><input type="password" class="fi" id="registerPassword" placeholder="At least 6 characters"></div>
+          <div class="fg"><label class="fl" for="registerPasswordConfirm">Confirm</label><input type="password" class="fi" id="registerPasswordConfirm" placeholder="Repeat password"></div>
+          <button class="btn btn-p" id="registerBtn">Create Account</button>
+          <div class="adiv">or</div>
+          <div class="tc"><button class="lbtn" id="showLoginBtn">Already have an account?</button></div>
+        </section>
+      </div>
+      <div id="accountView" class="aview">
+        <section class="sect">
+          <div class="sect-hdr">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+            <h2 class="sect-title">Account</h2>
+          </div>
+          <div style="padding:9px 11px;background:var(--accent-dim);border-radius:var(--r);border:1px solid var(--accent-border);margin-bottom:9px;">
+            <p style="font-size:12px;font-weight:600;color:var(--accent);" id="accountName"></p>
+            <p style="font-size:10px;color:var(--text-2);" id="accountEmail"></p>
+            <p style="font-size:9px;color:var(--text-3);margin-top:2px;" id="accountCreated"></p>
+          </div>
+          <p style="font-size:11px;color:var(--text-2);margin-bottom:9px;" id="accountStats">0 journal entries</p>
+          <button class="btn btn-o" id="logoutBtn2">Log Out</button>
+          <div style="margin-top:12px;padding-top:9px;border-top:1px solid var(--border-subtle);">
+            <button class="btn btn-d btn-sm" id="deleteAccountBtn">Delete Account & Data</button>
+          </div>
+        </section>
+      </div>
+      <div id="accountStatus" class="sts" role="alert"></div>
+    </div>
+  </div>
+
+  <footer class="ftr"><p>v6.2 · Academic MVP · Ticketmaster Accessibility</p></footer>
+  <script src="popup.js"></script>
+</body>
+</html>

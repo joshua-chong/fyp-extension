@@ -1,0 +1,98 @@
+{
+  "manifest_version": 3,
+  "name": "Seat Finder — Ticket Accessibility Helper",
+  "version": "6.3.0",
+  "description": "Reduces cognitive load for neurodivergent users during ticket booking on Ticketmaster, Viagogo, and StubHub. Features: MCDA seat scoring heatmap, sensory profile system, declutter mode, animation freeze, pin-to-compare seats, colour scheme customisation, focus mode highlighting, and typography controls.",
+  
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  
+  "host_permissions": [
+    "https://ticketmaster.com/*",
+    "https://*.ticketmaster.com/*",
+    "https://ticketmaster.co.uk/*",
+    "https://*.ticketmaster.co.uk/*",
+    "https://*.viagogo.com/*",
+    "https://viagogo.com/*",
+    "https://*.viagogo.co.uk/*",
+    "https://*.stubhub.com/*",
+    "https://stubhub.com/*",
+    "https://*.stubhub.co.uk/*"
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ticketmaster.com/*",
+        "https://*.ticketmaster.com/*",
+        "https://ticketmaster.co.uk/*",
+        "https://*.ticketmaster.co.uk/*",
+        "https://*.ticketmaster.eu/*",
+        "https://*.livenation.com/*",
+        "https://*.viagogo.com/*",
+        "https://viagogo.com/*",
+        "https://*.viagogo.co.uk/*",
+        "https://*.stubhub.com/*",
+        "https://stubhub.com/*",
+        "https://*.stubhub.co.uk/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://ticketmaster.com/*",
+        "https://*.ticketmaster.com/*",
+        "https://ticketmaster.co.uk/*",
+        "https://*.ticketmaster.co.uk/*",
+        "https://*.ticketmaster.eu/*",
+        "https://*.livenation.com/*",
+        "https://*.viagogo.com/*",
+        "https://viagogo.com/*",
+        "https://*.viagogo.co.uk/*",
+        "https://*.stubhub.com/*",
+        "https://stubhub.com/*",
+        "https://*.stubhub.co.uk/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["seats.json"],
+      "matches": [
+        "https://ticketmaster.com/*",
+        "https://*.ticketmaster.com/*",
+        "https://ticketmaster.co.uk/*",
+        "https://*.ticketmaster.co.uk/*",
+        "https://*.viagogo.com/*",
+        "https://*.viagogo.co.uk/*",
+        "https://*.stubhub.com/*",
+        "https://*.stubhub.co.uk/*"
+      ]
+    }
+  ],
+  
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
