@@ -26,7 +26,7 @@ ticketmaster-a11y-extension/
 
 ---
 
-## 🎯 Core Features
+## Core Features
 
 ### 1. Dynamic Seat Data Capture (NEW in v2)
 
@@ -72,8 +72,8 @@ Six preset palettes designed around specific accessibility needs:
 | High Contrast | Maximum readability | 🟡 Yellow on black |
 | Colour Blind (Red-Green) | Deuteranopia / Protanopia safe | 🔵 Blue / 🟠 Orange |
 | Colour Blind (Blue-Yellow) | Tritanopia safe | 🔴 Red / 🔵 Cyan |
-| Muted / Calm | Reduced sensory stimulation | 🫒 Soft earth tones |
-| Dark Mode | Light-sensitive users | 🌙 Dark background, muted highlights |
+| Muted / Calm | Reduced sensory stimulation | Soft earth tones |
+| Dark Mode | Light-sensitive users | Dark background, muted highlights |
 
 **Implementation:** All colours are CSS custom properties set by JavaScript, meaning the entire panel and seat highlighting respond instantly to scheme changes.
 
@@ -99,7 +99,7 @@ Preferences saved via `chrome.storage.sync` and loaded automatically.
 
 ---
 
-## 🏗 Architecture
+## Architecture
 
 ### Two-Script Design
 
@@ -130,7 +130,7 @@ Preferences saved via bridge.js → chrome.storage.sync
 
 ---
 
-## 🔧 Installation (Development)
+## Installation (Development)
 
 1. Open Chrome → `chrome://extensions/`
 2. Enable "Developer mode"
@@ -141,7 +141,7 @@ Preferences saved via bridge.js → chrome.storage.sync
 
 ---
 
-## 🔒 Privacy & Constraints
+## Privacy & Constraints
 
 - **Ticketmaster only** — host permissions scoped to TM domains
 - **No external data sent** — all processing is local
@@ -151,7 +151,7 @@ Preferences saved via bridge.js → chrome.storage.sync
 
 ---
 
-## 🎓 Academic Context
+## Academic Context
 
 This extension is an **MVP prototype** for academic research into accessibility tools for neurodivergent users. It demonstrates:
 
@@ -165,7 +165,7 @@ This extension is an **MVP prototype** for academic research into accessibility 
 
 ---
 
-## 📚 References
+## References
 
 - WCAG 2.1 SC 1.4.12 (Text Spacing)
 - WCAG 2.1 SC 1.4.4 (Resize Text)
