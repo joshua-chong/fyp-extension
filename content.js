@@ -452,10 +452,38 @@
     if (titleEl) {
       eventMeta.eventName = titleEl.textContent?.trim();
     }
-    // Try venue
-    const venueEl = document.querySelector('[class*="venue"], [class*="Venue"], [data-testid*="venue"]');
-    if (venueEl && !eventMeta.venue) {
-      eventMeta.venue = venueEl.textContent?.trim();
+    // Try venue — TM shows venue as a link near the event header (e.g. "The O2, London")
+    if (!eventMeta.venue) {
+      const venueSelectors = [
+        // TM-specific: venue link in event header area
+        'a[href*="/venue/"]',
+        'a[href*="/discover/"]',
+        '[data-testid="venue-link"]', '[data-testid="venue-name"]',
+        '[data-testid*="venue"]',
+        // Class-based patterns
+        '[class*="VenueName"]', '[class*="venue-name"]', '[class*="venueName"]',
+        '[class*="venue_name"]',
+        // Generic venue containers
+        '[class*="Venue"] a', '[class*="venue"] a',
+        // Broader fallbacks
+        '[class*="venue"]', '[class*="Venue"]',
+        '[class*="location-name"]', '[class*="LocationName"]',
+      ];
+      for (const sel of venueSelectors) {
+        try {
+          const el = document.querySelector(sel);
+          if (el) {
+            const text = el.textContent?.trim();
+            // Must look like a venue name: 3–80 chars, not a price, not an event name
+            if (text && text.length >= 3 && text.length <= 80 &&
+                !/^\$|^£|^€|ticket|buy|more info/i.test(text) &&
+                text !== eventMeta.eventName) {
+              eventMeta.venue = text;
+              break;
+            }
+          }
+        } catch (e) {}
+      }
     }
   }
 
@@ -1164,12 +1192,208 @@
     renderPanelContent();
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // VENUE ACCESSIBILITY TAB RENDERER
+  // ══════════════════════════════════════════════════════════════
+
+  function renderVenueTab() {
+    const meta = _venueMeta;
+    const venueName = eventMeta.venue;
+    const eventName = eventMeta.eventName || 'Unknown event';
+
+    // ── Loading / no data states ──
+    if (!meta) {
+      return `
+        <div class="tm-a11y-venue-tab-content">
+          <div class="tm-a11y-venue-header">
+            <div class="tm-a11y-venue-name">${venueName || 'Venue not detected'}</div>
+            ${!venueName ? `<div class="tm-a11y-venue-hint" style="margin-top:4px">Could not find a venue name on this page. Try scrolling to make the venue info visible, then press Retry.</div>` : ''}
+          </div>
+          <div class="tm-a11y-venue-loading">
+            <div class="tm-a11y-venue-loading-icon">🏟</div>
+            <p>${venueName ? 'Analysing venue accessibility information…' : 'Waiting for venue name…'}</p>
+            <p class="tm-a11y-venue-hint">The extension fetches the venue's official accessibility page and uses AI to extract key features.</p>
+            <button class="tm-a11y-toggle-btn" id="tmA11yVenueRetry" style="margin-top:10px">
+              <span>Retry Lookup</span>
+            </button>
+          </div>
+        </div>`;
+    }
+
+    // ── Error: no API key ──
+    if (meta.error === 'no_api_key') {
+      return `
+        <div class="tm-a11y-venue-tab-content">
+          <div class="tm-a11y-venue-header">
+            <div class="tm-a11y-venue-name">${venueName || 'Unknown venue'}</div>
+            <div class="tm-a11y-venue-event">${eventName}</div>
+          </div>
+          <div class="tm-a11y-venue-loading">
+            <div class="tm-a11y-venue-loading-icon">🔑</div>
+            <p>OpenAI API key required</p>
+            <p class="tm-a11y-venue-hint">To use AI-powered venue accessibility extraction, add your OpenAI API key in the <strong>Tools</strong> tab below.</p>
+            <button class="tm-a11y-toggle-btn" id="tmA11yVenueRetry" style="margin-top:10px">
+              <span>Retry After Adding Key</span>
+            </button>
+          </div>
+        </div>`;
+    }
+
+    // ── Error: API failure ──
+    if (meta.error && meta.error !== 'no_api_key') {
+      return `
+        <div class="tm-a11y-venue-tab-content">
+          <div class="tm-a11y-venue-header">
+            <div class="tm-a11y-venue-name">${venueName || 'Unknown venue'}</div>
+            <div class="tm-a11y-venue-event">${eventName}</div>
+          </div>
+          <div class="tm-a11y-venue-loading">
+            <div class="tm-a11y-venue-loading-icon">⚠️</div>
+            <p>AI extraction failed</p>
+            <p class="tm-a11y-venue-hint">${meta.error === 'no_text' ? 'Could not find meaningful text on the venue accessibility page.' : 'The OpenAI API returned an error. Check your API key in the Tools tab, or try again.'} (${meta.error})</p>
+            ${meta.source_url ? `<p class="tm-a11y-venue-hint"><a href="${meta.source_url}" target="_blank" rel="noopener" style="color:var(--tm-a11y-accent,#3ecf8e);text-decoration:underline">View accessibility page manually ↗</a></p>` : ''}
+            <button class="tm-a11y-toggle-btn" id="tmA11yVenueRetry" style="margin-top:10px">
+              <span>Retry</span>
+            </button>
+          </div>
+        </div>`;
+    }
+
+    // ── Build the 8 accessibility feature rows ──
+    const features = [
+      { key: 'accessible_parking',  icon: '🚗', label: 'Accessible Parking',      desc: 'Designated parking spaces for disabled visitors' },
+      { key: 'accessible_entrance', icon: '🚪', label: 'Accessible Entrance',     desc: 'Step-free or ramped entrance available' },
+      { key: 'accessible_seating',  icon: '♿', label: 'Accessible Seating',       desc: 'Wheelchair-accessible seating positions' },
+      { key: 'companion_seating',   icon: '🪑', label: 'Companion Seating',        desc: 'Seats for carers or assistants alongside accessible seats' },
+      { key: 'hearing_loop',        icon: '🔄', label: 'Hearing / Induction Loop', desc: 'Induction loop system for hearing aid users' },
+      { key: 'service_animals',     icon: '🐕', label: 'Service Animals',          desc: 'Guide dogs and assistance animals permitted' },
+      { key: 'accessible_restrooms', icon: '🚻', label: 'Accessible Restrooms',   desc: 'Wheelchair-accessible toilet facilities' },
+      { key: 'quiet_space',         icon: '🤫', label: 'Quiet Space',              desc: 'Sensory-friendly quiet room or calm zone' },
+    ];
+
+    const featureRows = features.map(f => {
+      const val = meta[f.key]; // "yes", "no", or "not_specified"
+
+      if (val === 'yes') {
+        return `
+          <div class="tm-a11y-venue-row tm-a11y-venue-available">
+            <span class="tm-a11y-venue-row-icon">${f.icon}</span>
+            <div class="tm-a11y-venue-row-content">
+              <span class="tm-a11y-venue-row-label">${f.label}</span>
+              <span class="tm-a11y-venue-row-desc">${f.desc}</span>
+            </div>
+            <span class="tm-a11y-venue-row-status tm-a11y-venue-status-yes">Available</span>
+          </div>`;
+      }
+
+      if (val === 'no') {
+        return `
+          <div class="tm-a11y-venue-row tm-a11y-venue-unavailable">
+            <span class="tm-a11y-venue-row-icon">${f.icon}</span>
+            <div class="tm-a11y-venue-row-content">
+              <span class="tm-a11y-venue-row-label">${f.label}</span>
+              <span class="tm-a11y-venue-row-desc">${f.desc}</span>
+            </div>
+            <span class="tm-a11y-venue-row-status tm-a11y-venue-status-no">Not available</span>
+          </div>`;
+      }
+
+      // not_specified
+      return `
+        <div class="tm-a11y-venue-row tm-a11y-venue-unknown">
+          <span class="tm-a11y-venue-row-icon">${f.icon}</span>
+          <div class="tm-a11y-venue-row-content">
+            <span class="tm-a11y-venue-row-label">${f.label}</span>
+            <span class="tm-a11y-venue-row-desc">Not mentioned on official venue site.</span>
+          </div>
+          <span class="tm-a11y-venue-row-status tm-a11y-venue-status-unknown">Unknown</span>
+        </div>`;
+    }).join('');
+
+    // ── Source info ──
+    const sourceLabel = {
+      'ai_extraction': 'AI extraction from venue website',
+      'ai_no_page': 'AI analysis (no accessibility page found)',
+      'cached': 'Cached data'
+    }[meta.data_source] || meta.data_source || 'Unknown';
+
+    const lastUpdated = meta.last_updated
+      ? new Date(meta.last_updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : 'Unknown';
+
+    const sourceUrlHTML = meta.source_url
+      ? `<div class="tm-a11y-venue-source-url"><a href="${meta.source_url}" target="_blank" rel="noopener" style="color:var(--tm-a11y-accent,#3ecf8e);font-size:11px;text-decoration:underline">View accessibility page ↗</a></div>`
+      : '';
+
+    return `
+      <div class="tm-a11y-venue-tab-content">
+        <div class="tm-a11y-venue-header">
+          <div class="tm-a11y-venue-name">${venueName || 'Unknown venue'}</div>
+          <div class="tm-a11y-venue-event">${eventName}</div>
+        </div>
+
+        <div class="tm-a11y-venue-section">
+          <div class="tm-a11y-venue-section-title">Accessibility Features</div>
+          <div class="tm-a11y-venue-features">
+            ${featureRows}
+          </div>
+        </div>
+
+        <div class="tm-a11y-venue-footer">
+          <div class="tm-a11y-venue-source">
+            <span>Source: ${sourceLabel}</span>
+            <span>Updated: ${lastUpdated}</span>
+          </div>
+          ${sourceUrlHTML}
+          <p class="tm-a11y-venue-disclaimer">This accessibility summary is AI-generated from the venue's published information. Always verify directly with the venue.</p>
+          <button class="tm-a11y-toggle-btn" id="tmA11yVenueRefresh" style="margin-top:8px">
+            <span>Refresh Data</span>
+          </button>
+
+        </div>
+
+        <div class="tm-a11y-chatbot-section">
+          <div class="tm-a11y-chatbot-header">
+            <span class="tm-a11y-chatbot-title">💬 Ask about this venue</span>
+          </div>
+          <div class="tm-a11y-chatbot-messages" id="tmA11yChatMessages">
+            <div class="tm-a11y-chat-msg tm-a11y-chat-bot">
+              <div class="tm-a11y-chat-bubble">Ask me anything about accessibility at <strong>${venueName}</strong> — parking, entrances, hearing loops, transport, and more.</div>
+            </div>
+          </div>
+          <div class="tm-a11y-chatbot-input-row">
+            <input type="text" id="tmA11yChatInput" placeholder="e.g. Is there step-free access from the station?" autocomplete="off" />
+            <button id="tmA11yChatSend" title="Send">➤</button>
+          </div>
+          <div class="tm-a11y-chatbot-controls">
+            <button id="tmA11yChatClear" class="tm-a11y-chat-clear-btn">Clear chat</button>
+            <span class="tm-a11y-chatbot-disclaimer">Answers are based on publicly available sources and may be incomplete.</span>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function renderPanelContent() {
     if (!panelElement) return;
 
     // Recompute MCDA scores if heatmap is active
     if (currentPreferences.mcdaEnabled) {
       computeAllMCDAScores();
+    }
+
+    // Async: update recommendations in background (non-blocking)
+    if (!_recDismissed && capturedSeats.length > 0) {
+      UserPreferenceEngine.getRecommendations(capturedSeats).then(recs => {
+        if (recs.length > 0 && JSON.stringify(recs.map(r => r.seat.id)) !== JSON.stringify((_cachedRecommendations || []).map(r => r.seat.id))) {
+          _cachedRecommendations = recs;
+          // Re-render only the rec panel if it exists, otherwise next full render will pick it up
+          const recPanel = document.getElementById('tmA11yRecPanel');
+          if (!recPanel && recs.length > 0) {
+            // Need a full re-render to insert rec panel
+            renderPanelContent();
+          }
+        }
+      }).catch(() => {});
     }
 
     const filtered = getFilteredSeats();
@@ -1226,12 +1450,15 @@
                   role="tab" aria-selected="${currentPanelTab === 'seats'}" data-tab="seats">Seats</button>
           <button class="tm-a11y-tab-btn ${currentPanelTab === 'filters' ? 'tm-a11y-tab-active' : ''}" 
                   role="tab" aria-selected="${currentPanelTab === 'filters'}" data-tab="filters">Filters</button>
+          <button class="tm-a11y-tab-btn ${currentPanelTab === 'venue' ? 'tm-a11y-tab-active' : ''}" 
+                  role="tab" aria-selected="${currentPanelTab === 'venue'}" data-tab="venue">Venue${_venueMeta ? ' ✓' : ''}</button>
           <button class="tm-a11y-tab-btn ${currentPanelTab === 'tools' ? 'tm-a11y-tab-active' : ''}" 
                   role="tab" aria-selected="${currentPanelTab === 'tools'}" data-tab="tools">Tools</button>
         </div>
 
         ${scanState === 'scanning' ? `
         <div class="tm-a11y-scan-overlay" id="tmA11yScanOverlay">
+        <button class="tm-a11y-panel-close" aria-label="Close panel" id="tmA11yClosePanel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           <div class="tm-a11y-scan-content">
             <div class="tm-a11y-scan-spinner"></div>
             <div class="tm-a11y-scan-title">Scanning all tickets…</div>
@@ -1284,6 +1511,9 @@
 
           <!-- SEAT LIST -->
           <div class="tm-a11y-seat-list" id="tmA11ySeatList">
+            ${!_recDismissed && _cachedRecommendations && _cachedRecommendations.length > 0
+              ? UserPreferenceEngine.renderRecommendations(_cachedRecommendations, symbol)
+              : ''}
             ${filtered.length === 0 
               ? `<div class="tm-a11y-empty-state">
                   <div class="tm-a11y-empty-icon"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
@@ -1364,6 +1594,11 @@
           ${currentPreferences.mcdaEnabled ? renderMCDAWeightPanel() : ''}
         </div>
 
+        <!-- ═══ TAB: VENUE ═══ -->
+        <div class="tm-a11y-tab-panel ${currentPanelTab === 'venue' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabVenue" role="tabpanel">
+          ${renderVenueTab()}
+        </div>
+
         <!-- ═══ TAB: TOOLS ═══ -->
         <div class="tm-a11y-tab-panel ${currentPanelTab === 'tools' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabTools" role="tabpanel">
           <div class="tm-a11y-panel-tools">
@@ -1416,6 +1651,32 @@
                 </button>
               </div>
               <p class="tm-a11y-tool-hint">Focus mode dims over-budget seats. Heatmap scores all seats by your priorities (set weights in Filters tab).</p>
+            </div>
+
+            <!-- RECOMMENDATION ENGINE (TIER 2) -->
+            <div class="tm-a11y-tool-section">
+              <div class="tm-a11y-tool-label">Recommendation Engine</div>
+              <p class="tm-a11y-tool-hint" style="margin-bottom:8px">Learns from seats you 👍 like or pin. After 3+ likes, recommended seats appear at the top of the Seats tab.</p>
+              <button class="tm-a11y-toggle-btn" id="tmA11yClearRecHistory" 
+                      title="Remove all stored seat selection history">
+                <span>Clear Recommendation History</span>
+              </button>
+              <p class="tm-a11y-tool-hint" style="margin-top:6px;font-size:11px;opacity:0.7">🔒 Your seat history is stored locally and never sent anywhere</p>
+            </div>
+
+            <!-- OPENAI API KEY (TIER 1 RAG) -->
+            <div class="tm-a11y-tool-section">
+              <div class="tm-a11y-tool-label">Venue Accessibility (AI)</div>
+              <p class="tm-a11y-tool-hint" style="margin-bottom:8px">Enter your OpenAI API key to enable AI-powered venue accessibility extraction. The key is stored locally in your browser.</p>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="password" id="tmA11yOpenAIKey" placeholder="sk-..." 
+                       style="flex:1;background:var(--tm-a11y-panel-bg-alt,#1e2233);border:1px solid var(--tm-a11y-panel-border,#2a2e3d);color:var(--tm-a11y-panel-text,#e4e6eb);padding:6px 8px;border-radius:4px;font-size:12px;font-family:monospace" />
+                <button class="tm-a11y-toggle-btn" id="tmA11ySaveAPIKey" style="flex-shrink:0;padding:6px 10px">
+                  <span>Save</span>
+                </button>
+              </div>
+              <p class="tm-a11y-tool-hint" id="tmA11yAPIKeyStatus" style="margin-top:6px;font-size:11px;opacity:0.7"></p>
+              <p class="tm-a11y-tool-hint" style="margin-top:4px;font-size:11px;opacity:0.5">🔒 Key stored locally via chrome.storage. Never sent anywhere except OpenAI's API.</p>
             </div>
           </div>
         </div>
@@ -1638,6 +1899,12 @@
             ${descLine ? `<span class="tm-a11y-card-desc">${descLine}</span>` : ''}
           </div>
           <div class="tm-a11y-card-actions">
+            <button class="tm-a11y-like-btn" 
+                    data-seat-id="${seat.id}" 
+                    aria-label="Save seat preference for recommendations"
+                    title="Save to recommendations">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2h0a3.13 3.13 0 0 1 3 3.88Z"/></svg>
+            </button>
             <button class="tm-a11y-pin-btn ${pinned ? 'tm-a11y-pin-active' : ''}" 
                     data-seat-id="${seat.id}" 
                     aria-label="${pinned ? 'Unpin seat' : 'Pin seat for comparison'}"
@@ -1902,7 +2169,31 @@
         e.stopPropagation();
         const seatId = btn.dataset.seatId;
         const seat = capturedSeats.find(s => s.id === seatId);
-        if (seat) togglePinSeat(seat);
+        if (seat) {
+          togglePinSeat(seat);
+          // ── Tier 2: Record pin as a preference signal ──
+          if (isSeatPinned(seat)) {
+            UserPreferenceEngine.recordSelection(seat, eventMeta.eventId, eventMeta.venue);
+          }
+        }
+      });
+    });
+
+    // === Tier 2: Like buttons on seat cards (saves preference without checkout) ===
+    document.querySelectorAll('.tm-a11y-like-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const seatId = btn.dataset.seatId;
+        const seat = capturedSeats.find(s => s.id === seatId);
+        if (seat) {
+          UserPreferenceEngine.recordSelection(seat, eventMeta.eventId, eventMeta.venue);
+          btn.classList.add('tm-a11y-like-active');
+          btn.title = 'Saved ✓';
+          setTimeout(() => {
+            btn.classList.remove('tm-a11y-like-active');
+            btn.title = 'Save to recommendations';
+          }, 2000);
+        }
       });
     });
 
@@ -1924,13 +2215,138 @@
       });
     });
 
-    // Seat card clicks — scroll to seat on map (but not on button/select clicks)
+    // Seat card clicks — scroll to seat on map (but not on button/select/pin/like clicks)
     document.querySelectorAll('.tm-a11y-seat-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.tm-a11y-card-select-btn, .tm-a11y-card-qty, .tm-a11y-pin-btn')) return;
+        if (e.target.closest('.tm-a11y-card-select-btn, .tm-a11y-card-qty, .tm-a11y-pin-btn, .tm-a11y-like-btn')) return;
         currentAdapter.scrollToSeat(card.dataset.seatId);
       });
     });
+
+    // === Tier 2: Recommendation dismiss ===
+    document.getElementById('tmA11yRecDismiss')?.addEventListener('click', () => {
+      _recDismissed = true;
+      const recPanel = document.getElementById('tmA11yRecPanel');
+      if (recPanel) recPanel.remove();
+    });
+
+    // === Tier 2: Recommendation card clicks — scroll to seat ===
+    document.querySelectorAll('.tm-a11y-rec-card').forEach(card => {
+      card.addEventListener('click', () => {
+        currentAdapter.scrollToSeat(card.dataset.seatId);
+      });
+    });
+
+    // === Tier 2: Clear recommendation history ===
+    document.getElementById('tmA11yClearRecHistory')?.addEventListener('click', async () => {
+      const btn = document.getElementById('tmA11yClearRecHistory');
+      if (btn) btn.textContent = 'Clearing…';
+      const count = await UserPreferenceEngine.clearHistory();
+      _cachedRecommendations = null;
+      _recDismissed = false;
+      if (btn) btn.textContent = `✓ Cleared ${count} selections`;
+      setTimeout(() => renderPanelContent(), 1500);
+    });
+
+    // === Tier 1: Venue tab — Retry / Refresh buttons ===
+    const venueRetryHandler = async (btnId) => {
+      const btn = document.getElementById(btnId);
+      if (btn) {
+        btn.querySelector('span').textContent = 'Searching…';
+        btn.disabled = true;
+      }
+      // Re-extract event meta to pick up venue name if it wasn't available before
+      currentAdapter.getEventMeta();
+      const vName = eventMeta.venue;
+      if (vName) {
+        // Clear cache to force fresh fetch
+        const cacheKey = VenueMetadataService._cacheKey(eventMeta.eventId, vName);
+        try { localStorage.removeItem(cacheKey); } catch (e) {}
+        delete VenueMetadataService._cache[cacheKey];
+
+        const meta = await VenueMetadataService.enrich(eventMeta.eventId, vName);
+        if (meta) {
+          _venueMeta = meta;
+          eventMeta.venueMeta = meta;
+        }
+      }
+      renderPanelContent();
+    };
+    document.getElementById('tmA11yVenueRetry')?.addEventListener('click', () => venueRetryHandler('tmA11yVenueRetry'));
+    document.getElementById('tmA11yVenueRefresh')?.addEventListener('click', () => venueRetryHandler('tmA11yVenueRefresh'));
+
+    // ══════════════════════════════════════════
+    // Venue RAG Chatbot
+    // ══════════════════════════════════════════
+    const chatInput = document.getElementById('tmA11yChatInput');
+    const chatSend = document.getElementById('tmA11yChatSend');
+    const chatMessages = document.getElementById('tmA11yChatMessages');
+    const chatClear = document.getElementById('tmA11yChatClear');
+
+    if (chatInput && chatSend && chatMessages) {
+      const sendChatMessage = () => {
+        const msg = chatInput.value.trim();
+        if (!msg) return;
+        chatInput.value = '';
+
+        // User bubble
+        const userDiv = document.createElement('div');
+        userDiv.className = 'tm-a11y-chat-msg tm-a11y-chat-user';
+        userDiv.innerHTML = '<div class="tm-a11y-chat-bubble">' + msg.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
+        chatMessages.appendChild(userDiv);
+
+        // Loading bubble
+        const loadDiv = document.createElement('div');
+        loadDiv.className = 'tm-a11y-chat-msg tm-a11y-chat-bot';
+        loadDiv.id = 'tmA11yChatLoading';
+        loadDiv.innerHTML = '<div class="tm-a11y-chat-bubble tm-a11y-chat-loading"><span class="tm-a11y-chat-dots"></span> Searching venue sources\u2026</div>';
+        chatMessages.appendChild(loadDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+
+        // Get venue context from cached meta
+        const ctxText = _venueMeta?._contextText || '';
+        const ctxSources = _venueMeta?._contextSources || [];
+        const vName = eventMeta.venue || '';
+
+        window.postMessage({
+          source: 'tm-a11y-content',
+          type: 'VENUE_CHAT',
+          venueName: vName,
+          userMessage: msg,
+          contextText: ctxText,
+          contextSources: ctxSources,
+        }, '*');
+
+        chatInput.disabled = true;
+        chatSend.disabled = true;
+      };
+
+      chatSend.addEventListener('click', sendChatMessage);
+      chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+      chatClear?.addEventListener('click', () => {
+        const vName = eventMeta.venue || 'this venue';
+        chatMessages.innerHTML = '<div class="tm-a11y-chat-msg tm-a11y-chat-bot"><div class="tm-a11y-chat-bubble">Ask me anything about accessibility at <strong>' + vName + '</strong>.</div></div>';
+      });
+    }
+
+    // === Tier 1: OpenAI API key save ===
+    const apiKeyInput = document.getElementById('tmA11yOpenAIKey');
+    const apiKeyStatus = document.getElementById('tmA11yAPIKeyStatus');
+    if (apiKeyInput) {
+      // Load existing key on render — ask bridge for stored key
+      window.postMessage({ source: 'tm-a11y-content', type: 'GET_OPENAI_KEY' }, '*');
+      document.getElementById('tmA11ySaveAPIKey')?.addEventListener('click', () => {
+        const key = apiKeyInput.value.trim();
+        if (!key || !key.startsWith('sk-')) {
+          if (apiKeyStatus) apiKeyStatus.textContent = '\u26A0 Key should start with sk-';
+          return;
+        }
+        window.postMessage({ source: 'tm-a11y-content', type: 'SAVE_OPENAI_KEY', apiKey: key }, '*');
+        if (apiKeyStatus) apiKeyStatus.textContent = '\u2713 Saved. Refresh page to use for venue lookups.';
+        apiKeyInput.value = key.substring(0, 7) + '...' + key.substring(key.length - 4);
+      });
+    }
 
     // === Select button — click TM listing + proceed to checkout ===
     document.querySelectorAll('.tm-a11y-card-select-btn').forEach(btn => {
@@ -3576,6 +3992,583 @@
 
 
   // ══════════════════════════════════════════════════════════════
+  // 9. VENUE ACCESSIBILITY METADATA — RAG EXTRACTION (TIER 1)
+  // ══════════════════════════════════════════════════════════════
+  // Flow: content.js → bridge.js → background.js (fetch page + OpenAI) → back
+  // Returns 8 features: yes / no / not_specified
+  // Cache: localStorage, 7-day TTL
+  // ══════════════════════════════════════════════════════════════
+
+  const VenueMetadataService = {
+    _cache: {},  // in-memory session cache
+    _pendingCallbacks: {},  // callbacks waiting for bridge response
+
+    /** Sanitise venue name for cache key */
+    _sanitiseName(name) {
+      return (name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').substring(0, 60);
+    },
+
+    /** Cache key for localStorage */
+    _cacheKey(eventId, venueName) {
+      return `venue_meta_v7_${eventId || 'unknown'}_${this._sanitiseName(venueName)}`;
+    },
+
+    /** Check localStorage cache (30-day TTL) */
+    _getFromCache(eventId, venueName) {
+      try {
+        const key = this._cacheKey(eventId, venueName);
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const cached = JSON.parse(raw);
+        const age = Date.now() - (cached.last_updated || 0);
+        const sevenDays = 7 * 24 * 60 * 60 * 1000;
+        if (age > sevenDays) {
+          localStorage.removeItem(key);
+          return null;
+        }
+        cached.data_source = 'cached';
+        return cached;
+      } catch (e) {
+        return null;
+      }
+    },
+
+    /** Save to localStorage cache */
+    _saveToCache(eventId, venueName, meta) {
+      try {
+        const key = this._cacheKey(eventId, venueName);
+        localStorage.setItem(key, JSON.stringify(meta));
+      } catch (e) {
+        console.log('[A11y Helper] Venue cache save failed:', e.message);
+      }
+    },
+
+    /**
+     * Main enrichment function.
+     * Checks cache first, then requests from bridge.js via postMessage.
+     */
+    async enrich(eventId, venueName) {
+      if (!venueName || venueName.length < 3) return null;
+
+      // 1. Check in-memory cache
+      const memKey = this._cacheKey(eventId, venueName);
+      if (this._cache[memKey]) return this._cache[memKey];
+
+      // 2. Check localStorage cache
+      const cached = this._getFromCache(eventId, venueName);
+      if (cached) {
+        this._cache[memKey] = cached;
+        return cached;
+      }
+
+      // 3. Request from bridge.js → background.js (RAG: page fetch + OpenAI)
+      console.log(`[A11y Helper] Requesting venue metadata via bridge for: "${venueName}"`);
+      return new Promise((resolve) => {
+        // Set a timeout — RAG pipeline (page fetch + OpenAI) can take 10-15s
+        const timeoutId = setTimeout(() => {
+          delete this._pendingCallbacks[venueName];
+          console.log('[A11y Helper] Venue metadata request timed out');
+          resolve(null);
+        }, 15000);
+
+        this._pendingCallbacks[venueName] = (meta) => {
+          clearTimeout(timeoutId);
+          delete this._pendingCallbacks[venueName];
+          if (meta) {
+            // Don't cache error results (no API key, API failure, etc.)
+            if (!meta.error) {
+              this._saveToCache(eventId, venueName, meta);
+              this._cache[memKey] = meta;
+            }
+            console.log(`[A11y Helper] Venue metadata received from bridge: ${meta.data_source}`);
+          } else {
+            console.log('[A11y Helper] Bridge returned no venue data');
+          }
+          resolve(meta);
+        };
+
+        // Send request to bridge.js
+        window.postMessage({
+          source: 'tm-a11y-content',
+          type: 'FETCH_VENUE_META',
+          venueName: venueName
+        }, '*');
+      });
+    },
+
+    /** Handle response from bridge.js */
+    _handleBridgeResponse(data) {
+      const venueName = data.venueName;
+      const callback = this._pendingCallbacks[venueName];
+      if (callback) {
+        callback(data.meta || null);
+      }
+    }
+  };
+
+  // Listen for venue metadata and API key responses from bridge.js
+  window.addEventListener('message', (event) => {
+    if (event.source !== window) return;
+    if (event.data?.source !== 'tm-a11y-bridge') return;
+
+    if (event.data.type === 'VENUE_META_RESULT') {
+      VenueMetadataService._handleBridgeResponse(event.data);
+    }
+
+
+    // ── Venue RAG Chatbot result ──
+    if (event.data.type === 'VENUE_CHAT_RESULT') {
+      const chatMsgs = document.getElementById('tmA11yChatMessages');
+      const chatIn = document.getElementById('tmA11yChatInput');
+      const chatBtn = document.getElementById('tmA11yChatSend');
+      const loadEl = document.getElementById('tmA11yChatLoading');
+
+      if (loadEl) loadEl.remove();
+      if (chatIn) chatIn.disabled = false;
+      if (chatBtn) chatBtn.disabled = false;
+
+      if (chatMsgs) {
+        const { answer, citations } = event.data;
+        let html = (answer || 'No response received.').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        html = html.replace(/\[(\d+)\]/g, '<sup class="tm-a11y-chat-cite">[$1]</sup>');
+
+        let citeHTML = '';
+        if (citations && citations.length > 0) {
+          citeHTML = '<div class="tm-a11y-chat-citations">' +
+            citations.map(c => {
+              const t = (c.title || 'Source').replace(/</g, '&lt;');
+              const u = c.url || '#';
+              const s = (c.snippet || '').replace(/</g, '&lt;');
+              return '<div class="tm-a11y-chat-citation"><a href="' + u + '" target="_blank" rel="noopener">[' + (c.index||'') + '] ' + t + '</a>' +
+                (s ? '<span class="tm-a11y-chat-citation-snippet">' + s + '</span>' : '') + '</div>';
+            }).join('') + '</div>';
+        }
+
+        const botDiv = document.createElement('div');
+        botDiv.className = 'tm-a11y-chat-msg tm-a11y-chat-bot';
+        botDiv.innerHTML = '<div class="tm-a11y-chat-bubble">' + html + '</div>' + citeHTML;
+        chatMsgs.appendChild(botDiv);
+        chatMsgs.scrollTop = chatMsgs.scrollHeight;
+        if (chatIn) chatIn.focus();
+      }
+    }
+
+    if (event.data.type === 'OPENAI_KEY_RESULT') {
+      const input = document.getElementById('tmA11yOpenAIKey');
+      const status = document.getElementById('tmA11yAPIKeyStatus');
+      if (input && event.data.hasKey) {
+        input.value = event.data.maskedKey;
+        if (status) status.textContent = '\u2713 API key configured';
+      } else if (status && !event.data.hasKey) {
+        status.textContent = 'No API key set yet';
+      }
+    }
+  });
+
+
+  // ══════════════════════════════════════════════════════════════
+  // 10. COGNITIVE LOAD REDUCTION — RECOMMENDATION ENGINE (TIER 2)
+  // ══════════════════════════════════════════════════════════════
+
+  const UserPreferenceEngine = {
+    _db: null,
+    _dbName: 'SeatFinderUserPrefs',
+    _storeName: 'seatSelections',
+    _maxRecords: 50,
+    _minSampleSize: 3,
+    _profile: null,      // Cached preference profile
+    _profileDirty: true, // Whether profile needs recompute
+
+    /** Initialise IndexedDB */
+    async init() {
+      return new Promise((resolve, reject) => {
+        try {
+          const request = indexedDB.open(this._dbName, 1);
+          request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(this._storeName)) {
+              const store = db.createObjectStore(this._storeName, { keyPath: 'id', autoIncrement: true });
+              store.createIndex('timestamp', 'timestamp', { unique: false });
+              store.createIndex('eventId', 'eventId', { unique: false });
+            }
+          };
+          request.onsuccess = (e) => {
+            this._db = e.target.result;
+            console.log('[A11y Helper] 🧠 Recommendation engine: IndexedDB ready');
+            resolve();
+          };
+          request.onerror = (e) => {
+            console.log('[A11y Helper] 🧠 IndexedDB init failed:', e.target.error);
+            resolve(); // Don't block — graceful degradation
+          };
+        } catch (e) {
+          console.log('[A11y Helper] 🧠 IndexedDB not available:', e.message);
+          resolve();
+        }
+      });
+    },
+
+    /**
+     * Record a seat selection. Called when user clicks "Select" on a seat card.
+     */
+    async recordSelection(seat, eventId, venueName) {
+      if (!this._db) return;
+      try {
+        const record = {
+          timestamp: Date.now(),
+          eventId: eventId || 'unknown',
+          venueName: venueName || '',
+          section: seat.section,
+          row: seat.row,
+          seatNumber: seat.seatNumber,
+          price: seat.price,
+          currency: seat.currency || 'GBP',
+          sellerType: seat.sellerType || 'primary',
+          type: seat.type || 'standard',
+          qualityScore: seat.qualityScore || null,
+          rowNumber: parseRowNumber(seat.row)
+        };
+
+        const tx = this._db.transaction(this._storeName, 'readwrite');
+        const store = tx.objectStore(this._storeName);
+        store.add(record);
+
+        // Enforce rolling window (max 50 records)
+        const countReq = store.count();
+        countReq.onsuccess = () => {
+          if (countReq.result > this._maxRecords) {
+            const idx = store.index('timestamp');
+            const cursor = idx.openCursor(); // oldest first
+            let toDelete = countReq.result - this._maxRecords;
+            cursor.onsuccess = (e) => {
+              const cur = e.target.result;
+              if (cur && toDelete > 0) {
+                cur.delete();
+                toDelete--;
+                cur.continue();
+              }
+            };
+          }
+        };
+
+        this._profileDirty = true;
+        console.log(`[A11y Helper] 🧠 Recorded selection: ${seat.section} @ ${seat.price}`);
+      } catch (e) {
+        console.log('[A11y Helper] 🧠 Record failed:', e.message);
+      }
+    },
+
+    /** Get all stored selections */
+    async _getAllSelections() {
+      if (!this._db) return [];
+      return new Promise((resolve) => {
+        try {
+          const tx = this._db.transaction(this._storeName, 'readonly');
+          const store = tx.objectStore(this._storeName);
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    },
+
+    /** Get selection count */
+    async getSelectionCount() {
+      if (!this._db) return 0;
+      return new Promise((resolve) => {
+        try {
+          const tx = this._db.transaction(this._storeName, 'readonly');
+          const store = tx.objectStore(this._storeName);
+          const req = store.count();
+          req.onsuccess = () => resolve(req.result || 0);
+          req.onerror = () => resolve(0);
+        } catch (e) {
+          resolve(0);
+        }
+      });
+    },
+
+    /**
+     * Build user preference profile from historical selections.
+     * Returns null if < 3 selections.
+     */
+    async buildProfile() {
+      if (!this._profileDirty && this._profile) return this._profile;
+
+      const selections = await this._getAllSelections();
+      if (selections.length < this._minSampleSize) {
+        this._profile = null;
+        return null;
+      }
+
+      const prices = selections.map(s => s.price).filter(p => p > 0);
+      const sections = {};
+      const rows = [];
+      let resaleCount = 0;
+      let vipCount = 0;
+      const avoidedSections = new Map(); // track sections user left (selected then abandoned)
+
+      selections.forEach(s => {
+        // Section frequency
+        sections[s.section] = (sections[s.section] || 0) + 1;
+
+        // Row numbers
+        if (s.rowNumber !== null && s.rowNumber !== undefined) {
+          rows.push(s.rowNumber);
+        }
+
+        // Seller type
+        if (s.sellerType === 'resale') resaleCount++;
+        if (s.type === 'vip' || s.type === 'premium') vipCount++;
+      });
+
+      // Normalise section frequencies
+      const total = selections.length;
+      const sectionFreq = {};
+      for (const [sec, count] of Object.entries(sections)) {
+        sectionFreq[sec] = count / total;
+      }
+
+      // Sort sections by frequency
+      const sortedSections = Object.entries(sectionFreq)
+        .sort((a, b) => b[1] - a[1]);
+
+      // Preferred sections (top sections accounting for >= 60% of choices)
+      const preferredSections = {};
+      let cumFreq = 0;
+      for (const [sec, freq] of sortedSections) {
+        preferredSections[sec] = freq;
+        cumFreq += freq;
+        if (cumFreq >= 0.6 && Object.keys(preferredSections).length >= 2) break;
+      }
+
+      // Preferred rows
+      const avgRow = rows.length > 0 ? rows.reduce((a, b) => a + b, 0) / rows.length : null;
+      const preferredRows = rows.length > 0
+        ? [...new Set(rows)].sort((a, b) => a - b).map(String)
+        : [];
+
+      // Proximity preference
+      let proximityPref = 'middle';
+      if (avgRow !== null) {
+        if (avgRow <= 10) proximityPref = 'front';
+        else if (avgRow >= 25) proximityPref = 'back';
+      }
+
+      const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+
+      this._profile = {
+        avg_price: Math.round(avgPrice * 100) / 100,
+        price_range: {
+          min: prices.length > 0 ? Math.min(...prices) : 0,
+          max: prices.length > 0 ? Math.max(...prices) : 0
+        },
+        price_tolerance: Math.round(avgPrice * 0.2 * 100) / 100, // ±20%
+        preferred_sections: preferredSections,
+        preferred_rows: preferredRows,
+        avg_row_number: avgRow !== null ? Math.round(avgRow * 10) / 10 : null,
+        proximity_preference: proximityPref,
+        avoids_sections: [], // Could be enriched with journal data
+        prefers_resale: resaleCount > total * 0.5,
+        prefers_vip: vipCount > total * 0.3,
+        sample_size: total
+      };
+
+      this._profileDirty = false;
+      return this._profile;
+    },
+
+    /**
+     * Score a seat (0–100) based on user preference profile.
+     * Formula:
+     *   50 (neutral) + price match (±30) + section match (±25) + row match (±25)
+     *   - avoid penalty (-15) + seller bonus (+5)
+     */
+    scoreSeat(seat, profile) {
+      if (!profile) return null;
+
+      let score = 50; // neutral base
+
+      // ── Price match (max 30 pts) ──
+      if (profile.avg_price > 0) {
+        const priceDiff = Math.abs(seat.price - profile.avg_price);
+        const tolerance = profile.price_tolerance || (profile.avg_price * 0.2);
+        if (priceDiff <= tolerance) {
+          // Within tolerance: 20–30 points based on closeness
+          score += 20 + (10 * (1 - priceDiff / tolerance));
+        } else if (priceDiff <= tolerance * 2) {
+          // Close but outside: 5–20 points
+          score += 5 + (15 * (1 - (priceDiff - tolerance) / tolerance));
+        } else {
+          // Far from preferred price: 0 or slight penalty
+          score -= 5;
+        }
+      }
+
+      // ── Section preference (max 25 pts) ──
+      const sectionFreq = profile.preferred_sections[seat.section] || 0;
+      if (sectionFreq > 0) {
+        score += Math.round(25 * sectionFreq); // Higher frequency = more points
+      }
+
+      // ── Row proximity (max 25 pts) ──
+      if (profile.avg_row_number !== null) {
+        const rowNum = parseRowNumber(seat.row);
+        if (rowNum !== null) {
+          const rowDiff = Math.abs(rowNum - profile.avg_row_number);
+          if (rowDiff <= 3) {
+            score += 25 - (rowDiff * 3); // Very close to preferred rows
+          } else if (rowDiff <= 10) {
+            score += 10 - rowDiff; // Somewhat close
+          }
+          // Far away: no bonus
+        }
+      }
+
+      // ── Avoid penalty (-15) ──
+      if (profile.avoids_sections.includes(seat.section)) {
+        score -= 15;
+      }
+
+      // ── Seller preference bonus (+5) ──
+      if (profile.prefers_resale && seat.sellerType === 'resale') score += 5;
+      if (!profile.prefers_resale && seat.sellerType === 'primary') score += 5;
+
+      return Math.max(0, Math.min(100, Math.round(score)));
+    },
+
+    /**
+     * Get top 3 recommended seats from the available set.
+     * Returns array of { seat, score, reasons[] } or empty array.
+     */
+    async getRecommendations(availableSeats) {
+      const profile = await this.buildProfile();
+      if (!profile || profile.sample_size < this._minSampleSize) return [];
+
+      const scored = availableSeats
+        .filter(s => s.availability === 'available')
+        .map(seat => {
+          const score = this.scoreSeat(seat, profile);
+          const reasons = this._generateReasons(seat, profile, score);
+          return { seat, score, reasons };
+        })
+        .filter(r => r.score >= 55) // Only recommend above-neutral seats
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+      return scored;
+    },
+
+    /** Generate human-readable reasons for a recommendation */
+    _generateReasons(seat, profile, score) {
+      const reasons = [];
+
+      // Price match
+      if (profile.avg_price > 0) {
+        const diff = Math.abs(seat.price - profile.avg_price);
+        const tolerance = profile.price_tolerance || (profile.avg_price * 0.2);
+        if (diff <= tolerance) {
+          reasons.push('Near your usual price');
+        }
+      }
+
+      // Section match
+      if (profile.preferred_sections[seat.section]) {
+        reasons.push('In a section you tend to choose');
+      }
+
+      // Row match
+      if (profile.avg_row_number !== null) {
+        const rowNum = parseRowNumber(seat.row);
+        if (rowNum !== null && Math.abs(rowNum - profile.avg_row_number) <= 5) {
+          reasons.push('Similar row to your past picks');
+        }
+      }
+
+      if (reasons.length === 0 && score >= 55) {
+        reasons.push('Good overall match to your history');
+      }
+
+      return reasons;
+    },
+
+    /**
+     * Clear all stored selection history.
+     */
+    async clearHistory() {
+      if (!this._db) return 0;
+      return new Promise((resolve) => {
+        try {
+          const tx = this._db.transaction(this._storeName, 'readwrite');
+          const store = tx.objectStore(this._storeName);
+          const countReq = store.count();
+          countReq.onsuccess = () => {
+            const count = countReq.result;
+            store.clear();
+            this._profile = null;
+            this._profileDirty = true;
+            console.log(`[A11y Helper] 🧠 Cleared ${count} selections`);
+            resolve(count);
+          };
+          countReq.onerror = () => resolve(0);
+        } catch (e) {
+          resolve(0);
+        }
+      });
+    },
+
+    /**
+     * Render the recommendations card for the seat list.
+     * Returns HTML string. Empty if no recommendations.
+     */
+    renderRecommendations(recommendations, symbol) {
+      if (!recommendations || recommendations.length === 0) return '';
+
+      const cards = recommendations.map((rec, i) => {
+        const s = rec.seat;
+        const matchPct = rec.score;
+        const reasonsHtml = rec.reasons.map(r => `<span class="tm-a11y-rec-reason">${r}</span>`).join('');
+        const rankLabel = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+
+        return `
+          <div class="tm-a11y-rec-card" data-seat-id="${s.id}" tabindex="0" role="button"
+               aria-label="Recommended: ${s.section} ${s.row ? 'Row ' + s.row : ''} ${symbol}${s.price.toFixed(2)} — ${matchPct}% match">
+            <div class="tm-a11y-rec-rank">${rankLabel}</div>
+            <div class="tm-a11y-rec-info">
+              <div class="tm-a11y-rec-section">${s.section}${s.row ? ` · Row ${s.row}` : ''}</div>
+              <div class="tm-a11y-rec-reasons">${reasonsHtml}</div>
+            </div>
+            <div class="tm-a11y-rec-right">
+              <div class="tm-a11y-rec-match">${matchPct}%</div>
+              <div class="tm-a11y-rec-price">${symbol}${s.price.toFixed(2)}</div>
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="tm-a11y-rec-panel" id="tmA11yRecPanel">
+          <div class="tm-a11y-rec-header">
+            <span class="tm-a11y-rec-title">🧠 Recommended for You</span>
+            <button class="tm-a11y-rec-dismiss" id="tmA11yRecDismiss" aria-label="Dismiss recommendations" title="Hide recommendations">×</button>
+          </div>
+          <div class="tm-a11y-rec-cards">${cards}</div>
+          <div class="tm-a11y-rec-privacy">🔒 Based on your local history · Never sent anywhere</div>
+        </div>`;
+    }
+  };
+
+  // Track whether recommendations panel is dismissed for this session
+  let _recDismissed = false;
+  // Cache recommendations to avoid recompute on every render
+  let _cachedRecommendations = null;
+  let _cachedRecVersion = 0;
+  // Cache venue metadata
+  let _venueMeta = null;
+
+
+  // ══════════════════════════════════════════════════════════════
   // 8b. BRIDGE COMMUNICATION
   // ══════════════════════════════════════════════════════════════
 
@@ -4868,7 +5861,24 @@
       // Extract event meta if not yet found
       if (!eventMeta.eventName) {
         currentAdapter.getEventMeta();
-        if (eventMeta.eventName && panelElement) renderPanelContent();
+        if (eventMeta.eventName && panelElement) {
+          renderPanelContent();
+          // Trigger venue enrichment when we first discover venue name
+          if (!_venueMeta && eventMeta.venue) {
+            VenueMetadataService.enrich(eventMeta.eventId, eventMeta.venue).then(meta => {
+              if (meta) { _venueMeta = meta; eventMeta.venueMeta = meta; renderPanelContent(); }
+            });
+          }
+        }
+      }
+      // Also keep trying to find venue name if we have event name but not venue yet
+      if (eventMeta.eventName && !eventMeta.venue) {
+        currentAdapter.getEventMeta();
+        if (eventMeta.venue && !_venueMeta) {
+          VenueMetadataService.enrich(eventMeta.eventId, eventMeta.venue).then(meta => {
+            if (meta) { _venueMeta = meta; eventMeta.venueMeta = meta; renderPanelContent(); }
+          });
+        }
       }
 
       // Re-apply declutter for dynamically loaded ads
@@ -4899,6 +5909,47 @@
     }, 3000);
 
     console.log('[A11y Helper] ████ Initialisation complete');
+
+    // ── Tier 2: Init recommendation engine (async, non-blocking) ──
+    UserPreferenceEngine.init().then(() => {
+      // Pre-build profile so it's ready when seats load
+      UserPreferenceEngine.buildProfile().then(profile => {
+        if (profile) {
+          console.log(`[A11y Helper] 🧠 Preference profile loaded (${profile.sample_size} selections)`);
+        }
+      });
+    });
+
+    // ── Tier 1: Venue metadata enrichment (async, non-blocking) ──
+    // Wait for DOM to settle so venue name has been extracted
+    const _tryVenueEnrich = () => {
+      // Re-extract event meta in case it wasn't ready earlier
+      currentAdapter.getEventMeta();
+      const venueName = eventMeta.venue; // Only use actual venue name, NOT event name
+      if (!venueName) {
+        console.log('[A11y Helper] 🏟 Venue name not found yet, will retry');
+        return false;
+      }
+      VenueMetadataService.enrich(eventMeta.eventId, venueName).then(meta => {
+        if (meta) {
+          _venueMeta = meta;
+          eventMeta.venueMeta = meta;
+          if (panelElement) renderPanelContent();
+          console.log(`[A11y Helper] 🏟 Venue metadata loaded for "${venueName}"`);
+        }
+      });
+      return true;
+    };
+    // Try at 3s, retry at 6s and 10s if venue name not yet available
+    setTimeout(() => {
+      if (!_tryVenueEnrich()) {
+        setTimeout(() => {
+          if (!_tryVenueEnrich()) {
+            setTimeout(() => _tryVenueEnrich(), 4000);
+          }
+        }, 3000);
+      }
+    }, 3000);
   }
 
   // Robust startup — wait for document.body to exist

@@ -178,3 +178,47 @@ This extension is an **MVP prototype** for academic research into accessibility 
 ## License
 
 MIT License — Academic use only
+
+---
+
+## 🆕 New Features in v6.4
+
+### 11. Venue Accessibility Metadata Enrichment (Tier 1)
+
+When visiting an event page, the extension asynchronously fetches venue accessibility data from Wikipedia and OpenStreetMap (Nominatim). Results are cached in `localStorage` for 30 days.
+
+**Displayed in panel header** as icons:
+- 🚗 Accessible parking
+- 🚪 Accessible entrance  
+- 🔄 Hearing/assistance loop
+- 🐕 Service animals welcome
+- ♿ Accessible seating
+- 🚻 Accessible restrooms
+- 🤫 Quiet space
+- 🪑 Companion seating
+- 🏟 Venue capacity
+
+**Technical details:**
+- Race condition: all sources queried in parallel with 3s timeout
+- Graceful degradation: if fetch fails, seats still render normally
+- No external API keys required (uses free public APIs)
+- Works across all three platforms (TM, Viagogo, StubHub)
+
+### 12. Cognitive Load Reduction — Recommendation Engine (Tier 2)
+
+After 3+ seat selections, the extension learns user preferences and recommends matching seats.
+
+**How it works:**
+1. Each "Select" button click records the seat to IndexedDB
+2. A preference profile is built: average price, preferred sections, typical row proximity
+3. Every available seat is scored 0–100 against the profile
+4. Top 3 matches shown at the top of the Seats tab with match% and reasoning
+
+**Scoring formula:**
+- 50 (neutral base) + price match (±30) + section match (±25) + row proximity (±25) - avoid penalty (-15) + seller bonus (+5)
+
+**Privacy:**
+- All data stored locally in IndexedDB
+- Never sent to any server
+- Rolling window of max 50 records
+- Clear button in Tools tab

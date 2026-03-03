@@ -1,98 +1,72 @@
 {
   "manifest_version": 3,
   "name": "Seat Finder — Ticket Accessibility Helper",
-  "version": "6.3.0",
-  "description": "Reduces cognitive load for neurodivergent users during ticket booking on Ticketmaster, Viagogo, and StubHub. Features: MCDA seat scoring heatmap, sensory profile system, declutter mode, animation freeze, pin-to-compare seats, colour scheme customisation, focus mode highlighting, and typography controls.",
-  
-  "permissions": [
-    "storage",
-    "activeTab"
-  ],
-  
+  "version": "6.5.0",
+  "description": "Reduces cognitive load for neurodivergent users during ticket booking. AI-powered venue accessibility extraction, MCDA scoring, sensory profiles, recommendation engine, declutter mode, focus mode, pin-to-compare, and typography controls.",
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
-    "https://ticketmaster.com/*",
-    "https://*.ticketmaster.com/*",
-    "https://ticketmaster.co.uk/*",
-    "https://*.ticketmaster.co.uk/*",
-    "https://*.viagogo.com/*",
-    "https://viagogo.com/*",
-    "https://*.viagogo.co.uk/*",
-    "https://*.stubhub.com/*",
-    "https://stubhub.com/*",
-    "https://*.stubhub.co.uk/*"
+    "https://ticketmaster.com/*", "https://*.ticketmaster.com/*",
+    "https://ticketmaster.co.uk/*", "https://*.ticketmaster.co.uk/*",
+    "https://*.viagogo.com/*", "https://viagogo.com/*", "https://*.viagogo.co.uk/*",
+    "https://*.stubhub.com/*", "https://stubhub.com/*", "https://*.stubhub.co.uk/*",
+    "https://api.openai.com/*",
+    "https://www.google.com/*",
+    "https://www.accesscard.online/*",
+    "https://*.theo2.co.uk/*", "https://*.cooplive.com/*",
+    "https://*.ovoarena.co.uk/*", "https://*.ovohydro.com/*",
+    "https://*.aoarena.com/*", "https://*.utilitaarenabham.co.uk/*",
+    "https://*.resortsworldarena.co.uk/*", "https://*.firstdirectarena.com/*",
+    "https://*.motorpointarenanottingham.com/*", "https://*.motorpointarenacardiff.co.uk/*",
+    "https://*.bppulselive.co.uk/*", "https://*.utilitarenasheffield.co.uk/*",
+    "https://*.utilitaarena.co.uk/*", "https://*.3arena.ie/*",
+    "https://*.royalalberthall.com/*", "https://*.eventimapollo.com/*",
+    "https://*.alexandrapalace.com/*", "https://*.cardiffcia.co.uk/*",
+    "https://*.london-stadium.com/*", "https://*.wembleystadium.com/*",
+    "https://*.tottenhamhotspur.com/*", "https://*.mandsbankarena.com/*",
+    "https://brightoncentre.co.uk/*", "https://*.bic.co.uk/*",
+    "https://*.ao-arena.com/*",
+    "https://academymusicgroup.com/*",
+    "https://www.academymusicgroup.com/*",
+    "https://*.pandjlive.com/*", "https://*.ssearenabelfast.com/*",
+    "https://sagegateshead.com/*", "https://*.usherhall.co.uk/*",
+    "https://*.principalitystadium.wales/*", "https://*.cardiffcia.co.uk/*"
   ],
-  
+  "background": { "service_worker": "background.js" },
   "action": {
     "default_popup": "popup.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
+    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
   },
-  
   "content_scripts": [
     {
       "matches": [
-        "https://ticketmaster.com/*",
-        "https://*.ticketmaster.com/*",
-        "https://ticketmaster.co.uk/*",
-        "https://*.ticketmaster.co.uk/*",
-        "https://*.ticketmaster.eu/*",
-        "https://*.livenation.com/*",
-        "https://*.viagogo.com/*",
-        "https://viagogo.com/*",
-        "https://*.viagogo.co.uk/*",
-        "https://*.stubhub.com/*",
-        "https://stubhub.com/*",
-        "https://*.stubhub.co.uk/*"
+        "https://ticketmaster.com/*", "https://*.ticketmaster.com/*",
+        "https://ticketmaster.co.uk/*", "https://*.ticketmaster.co.uk/*",
+        "https://*.ticketmaster.eu/*", "https://*.livenation.com/*",
+        "https://*.viagogo.com/*", "https://viagogo.com/*", "https://*.viagogo.co.uk/*",
+        "https://*.stubhub.com/*", "https://stubhub.com/*", "https://*.stubhub.co.uk/*"
       ],
-      "js": ["content.js"],
-      "css": ["content.css"],
-      "run_at": "document_start",
-      "world": "MAIN",
-      "all_frames": true
+      "js": ["content.js"], "css": ["content.css"],
+      "run_at": "document_start", "world": "MAIN", "all_frames": true
     },
     {
       "matches": [
-        "https://ticketmaster.com/*",
-        "https://*.ticketmaster.com/*",
-        "https://ticketmaster.co.uk/*",
-        "https://*.ticketmaster.co.uk/*",
-        "https://*.ticketmaster.eu/*",
-        "https://*.livenation.com/*",
-        "https://*.viagogo.com/*",
-        "https://viagogo.com/*",
-        "https://*.viagogo.co.uk/*",
-        "https://*.stubhub.com/*",
-        "https://stubhub.com/*",
-        "https://*.stubhub.co.uk/*"
+        "https://ticketmaster.com/*", "https://*.ticketmaster.com/*",
+        "https://ticketmaster.co.uk/*", "https://*.ticketmaster.co.uk/*",
+        "https://*.ticketmaster.eu/*", "https://*.livenation.com/*",
+        "https://*.viagogo.com/*", "https://viagogo.com/*", "https://*.viagogo.co.uk/*",
+        "https://*.stubhub.com/*", "https://stubhub.com/*", "https://*.stubhub.co.uk/*"
       ],
-      "js": ["bridge.js"],
-      "run_at": "document_start",
-      "all_frames": true
+      "js": ["bridge.js"], "run_at": "document_start", "all_frames": true
     }
   ],
-  
-  "web_accessible_resources": [
-    {
-      "resources": ["seats.json"],
-      "matches": [
-        "https://ticketmaster.com/*",
-        "https://*.ticketmaster.com/*",
-        "https://ticketmaster.co.uk/*",
-        "https://*.ticketmaster.co.uk/*",
-        "https://*.viagogo.com/*",
-        "https://*.viagogo.co.uk/*",
-        "https://*.stubhub.com/*",
-        "https://*.stubhub.co.uk/*"
-      ]
-    }
-  ],
-  
-  "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
-  }
+  "web_accessible_resources": [{
+    "resources": ["seats.json"],
+    "matches": [
+      "https://ticketmaster.com/*", "https://*.ticketmaster.com/*",
+      "https://ticketmaster.co.uk/*", "https://*.ticketmaster.co.uk/*",
+      "https://*.viagogo.com/*", "https://*.viagogo.co.uk/*",
+      "https://*.stubhub.com/*", "https://*.stubhub.co.uk/*"
+    ]
+  }],
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
 }
