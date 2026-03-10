@@ -384,6 +384,71 @@
   let activeProfileId = null; // Currently active profile ID
   let mcdaScores = new Map(); // seatContentKey → { score, tier, subscores }
 
+  // ── Decision progress tracker ──
+  // Externalises the user's decision stage to reduce executive function load.
+  // Stages: 'exploring' → 'comparing' → 'deciding'
+  // Advances automatically based on observable user behaviour.
+  let _decisionStage = 'exploring';
+  let _decisionInteractions = {
+    filtersApplied: false,    // User changed section/sort/price filter
+    seatsViewed: 0,           // Number of seat cards clicked/scrolled into view
+    seatsPinned: 0,           // Number of seats pinned for comparison
+    seatsLiked: 0,            // Number of seats liked (preference signal)
+    timeOnPageMs: 0,          // Time since panel opened
+    lastStageChange: Date.now()
+  };
+
+  /**
+   * Compute the current decision stage from interaction signals.
+   * 
+   * Exploring: initial browsing — user is scanning options
+   * Comparing: user has narrowed down — pinned/liked seats, applied filters
+   * Deciding:  user is in final selection — 2 pins, or 1 pin + extended dwell
+   * 
+   * Based on executive function externalisation research (Barkley, 1997):
+   * neurodivergent users benefit from explicit "where am I?" cues in
+   * unstructured decision processes.
+   */
+  function computeDecisionStage() {
+    const d = _decisionInteractions;
+    let stage = 'exploring';
+
+    // Comparing: user has started narrowing down
+    if (d.seatsPinned >= 1 || d.seatsLiked >= 2 || (d.filtersApplied && d.seatsViewed >= 5)) {
+      stage = 'comparing';
+    }
+
+    // Deciding: user is in final selection mode
+    if (d.seatsPinned >= 2 || (d.seatsPinned >= 1 && d.seatsLiked >= 2)) {
+      stage = 'deciding';
+    }
+
+    if (stage !== _decisionStage) {
+      _decisionStage = stage;
+      _decisionInteractions.lastStageChange = Date.now();
+      updateDecisionProgressUI();
+    }
+  }
+
+  /** Update just the progress indicator DOM (no full re-render needed) */
+  function updateDecisionProgressUI() {
+    const el = document.getElementById('tmA11yDecisionProgress');
+    if (!el) return;
+    const stages = ['exploring', 'comparing', 'deciding'];
+    const idx = stages.indexOf(_decisionStage);
+    stages.forEach((s, i) => {
+      const step = el.querySelector(`[data-stage="${s}"]`);
+      if (!step) return;
+      step.classList.toggle('tm-a11y-stage-active', i === idx);
+      step.classList.toggle('tm-a11y-stage-done', i < idx);
+      step.classList.toggle('tm-a11y-stage-future', i > idx);
+    });
+    // Update the connecting lines
+    el.querySelectorAll('.tm-a11y-stage-line').forEach((line, i) => {
+      line.classList.toggle('tm-a11y-stage-line-done', i < idx);
+    });
+  }
+
   // ══════════════════════════════════════════════════════════════
   // 3. SEAT DATA — SIDEBAR-ONLY EXTRACTION
   // ══════════════════════════════════════════════════════════════
@@ -1210,7 +1275,7 @@
             ${!venueName ? `<div class="tm-a11y-venue-hint" style="margin-top:4px">Could not find a venue name on this page. Try scrolling to make the venue info visible, then press Retry.</div>` : ''}
           </div>
           <div class="tm-a11y-venue-loading">
-            <div class="tm-a11y-venue-loading-icon">🏟</div>
+            <div class="tm-a11y-venue-loading-icon"><span class="tm-a11y-icon tm-a11y-icon-venue"></span></div>
             <p>${venueName ? 'Analysing venue accessibility information…' : 'Waiting for venue name…'}</p>
             <p class="tm-a11y-venue-hint">The extension fetches the venue's official accessibility page and uses AI to extract key features.</p>
             <button class="tm-a11y-toggle-btn" id="tmA11yVenueRetry" style="margin-top:10px">
@@ -1229,7 +1294,7 @@
             <div class="tm-a11y-venue-event">${eventName}</div>
           </div>
           <div class="tm-a11y-venue-loading">
-            <div class="tm-a11y-venue-loading-icon">🔑</div>
+            <div class="tm-a11y-venue-loading-icon"><span class="tm-a11y-icon tm-a11y-icon-key"></span></div>
             <p>OpenAI API key required</p>
             <p class="tm-a11y-venue-hint">To use AI-powered venue accessibility extraction, add your OpenAI API key in the <strong>Tools</strong> tab below.</p>
             <button class="tm-a11y-toggle-btn" id="tmA11yVenueRetry" style="margin-top:10px">
@@ -1248,7 +1313,7 @@
             <div class="tm-a11y-venue-event">${eventName}</div>
           </div>
           <div class="tm-a11y-venue-loading">
-            <div class="tm-a11y-venue-loading-icon">⚠️</div>
+            <div class="tm-a11y-venue-loading-icon"><span class="tm-a11y-icon tm-a11y-icon-warning"></span></div>
             <p>AI extraction failed</p>
             <p class="tm-a11y-venue-hint">${meta.error === 'no_text' ? 'Could not find meaningful text on the venue accessibility page.' : 'The OpenAI API returned an error. Check your API key in the Tools tab, or try again.'} (${meta.error})</p>
             ${meta.source_url ? `<p class="tm-a11y-venue-hint"><a href="${meta.source_url}" target="_blank" rel="noopener" style="color:var(--tm-a11y-accent,#3ecf8e);text-decoration:underline">View accessibility page manually ↗</a></p>` : ''}
@@ -1261,14 +1326,14 @@
 
     // ── Build the 8 accessibility feature rows ──
     const features = [
-      { key: 'accessible_parking',  icon: '🚗', label: 'Accessible Parking',      desc: 'Designated parking spaces for disabled visitors' },
-      { key: 'accessible_entrance', icon: '🚪', label: 'Accessible Entrance',     desc: 'Step-free or ramped entrance available' },
-      { key: 'accessible_seating',  icon: '♿', label: 'Accessible Seating',       desc: 'Wheelchair-accessible seating positions' },
-      { key: 'companion_seating',   icon: '🪑', label: 'Companion Seating',        desc: 'Seats for carers or assistants alongside accessible seats' },
-      { key: 'hearing_loop',        icon: '🔄', label: 'Hearing / Induction Loop', desc: 'Induction loop system for hearing aid users' },
-      { key: 'service_animals',     icon: '🐕', label: 'Service Animals',          desc: 'Guide dogs and assistance animals permitted' },
-      { key: 'accessible_restrooms', icon: '🚻', label: 'Accessible Restrooms',   desc: 'Wheelchair-accessible toilet facilities' },
-      { key: 'quiet_space',         icon: '🤫', label: 'Quiet Space',              desc: 'Sensory-friendly quiet room or calm zone' },
+      { key: 'accessible_parking',  iconClass: 'parking',    label: 'Accessible Parking',      desc: 'Designated parking spaces for disabled visitors' },
+      { key: 'accessible_entrance', iconClass: 'entrance',   label: 'Accessible Entrance',     desc: 'Step-free or ramped entrance available' },
+      { key: 'accessible_seating',  iconClass: 'wheelchair', label: 'Accessible Seating',       desc: 'Wheelchair-accessible seating positions' },
+      { key: 'companion_seating',   iconClass: 'companion',  label: 'Companion Seating',        desc: 'Seats for carers or assistants alongside accessible seats' },
+      { key: 'hearing_loop',        iconClass: 'hearing',    label: 'Hearing / Induction Loop', desc: 'Induction loop system for hearing aid users' },
+      { key: 'service_animals',     iconClass: 'service-animal', label: 'Service Animals',      desc: 'Guide dogs and assistance animals permitted' },
+      { key: 'accessible_restrooms', iconClass: 'restroom',  label: 'Accessible Restrooms',   desc: 'Wheelchair-accessible toilet facilities' },
+      { key: 'quiet_space',         iconClass: 'quiet',      label: 'Quiet Space',              desc: 'Sensory-friendly quiet room or calm zone' },
     ];
 
     const featureRows = features.map(f => {
@@ -1277,7 +1342,7 @@
       if (val === 'yes') {
         return `
           <div class="tm-a11y-venue-row tm-a11y-venue-available">
-            <span class="tm-a11y-venue-row-icon">${f.icon}</span>
+            <span class="tm-a11y-venue-row-icon"><span class="tm-a11y-icon tm-a11y-icon-${f.iconClass}"></span></span>
             <div class="tm-a11y-venue-row-content">
               <span class="tm-a11y-venue-row-label">${f.label}</span>
               <span class="tm-a11y-venue-row-desc">${f.desc}</span>
@@ -1289,7 +1354,7 @@
       if (val === 'no') {
         return `
           <div class="tm-a11y-venue-row tm-a11y-venue-unavailable">
-            <span class="tm-a11y-venue-row-icon">${f.icon}</span>
+            <span class="tm-a11y-venue-row-icon"><span class="tm-a11y-icon tm-a11y-icon-${f.iconClass}"></span></span>
             <div class="tm-a11y-venue-row-content">
               <span class="tm-a11y-venue-row-label">${f.label}</span>
               <span class="tm-a11y-venue-row-desc">${f.desc}</span>
@@ -1301,7 +1366,7 @@
       // not_specified
       return `
         <div class="tm-a11y-venue-row tm-a11y-venue-unknown">
-          <span class="tm-a11y-venue-row-icon">${f.icon}</span>
+          <span class="tm-a11y-venue-row-icon"><span class="tm-a11y-icon tm-a11y-icon-${f.iconClass}"></span></span>
           <div class="tm-a11y-venue-row-content">
             <span class="tm-a11y-venue-row-label">${f.label}</span>
             <span class="tm-a11y-venue-row-desc">Not mentioned on official venue site.</span>
@@ -1383,7 +1448,7 @@
 
     // Async: update recommendations in background (non-blocking)
     if (!_recDismissed && capturedSeats.length > 0) {
-      UserPreferenceEngine.getRecommendations(capturedSeats).then(recs => {
+      UserPreferenceEngine.getRecommendations(capturedSeats, getActiveProfile(), _venueMeta).then(recs => {
         if (recs.length > 0 && JSON.stringify(recs.map(r => r.seat.id)) !== JSON.stringify((_cachedRecommendations || []).map(r => r.seat.id))) {
           _cachedRecommendations = recs;
           // Re-render only the rec panel if it exists, otherwise next full render will pick it up
@@ -1455,6 +1520,28 @@
           <button class="tm-a11y-tab-btn ${currentPanelTab === 'tools' ? 'tm-a11y-tab-active' : ''}" 
                   role="tab" aria-selected="${currentPanelTab === 'tools'}" data-tab="tools">Tools</button>
         </div>
+
+        <!-- DECISION PROGRESS INDICATOR -->
+        ${capturedSeats.length > 0 && scanState !== 'scanning' ? `
+        <div class="tm-a11y-decision-progress" id="tmA11yDecisionProgress" 
+             role="status" aria-label="Decision progress: ${_decisionStage}"
+             title="Tracks where you are in your seat selection process">
+          <div class="tm-a11y-stage ${_decisionStage === 'exploring' ? 'tm-a11y-stage-active' : ''}${_decisionStage === 'comparing' || _decisionStage === 'deciding' ? ' tm-a11y-stage-done' : ''}" data-stage="exploring">
+            <span class="tm-a11y-stage-dot"></span>
+            <span class="tm-a11y-stage-label">Exploring</span>
+          </div>
+          <div class="tm-a11y-stage-line ${_decisionStage === 'comparing' || _decisionStage === 'deciding' ? 'tm-a11y-stage-line-done' : ''}"></div>
+          <div class="tm-a11y-stage ${_decisionStage === 'comparing' ? 'tm-a11y-stage-active' : ''}${_decisionStage === 'deciding' ? ' tm-a11y-stage-done' : ''}${_decisionStage === 'exploring' ? ' tm-a11y-stage-future' : ''}" data-stage="comparing">
+            <span class="tm-a11y-stage-dot"></span>
+            <span class="tm-a11y-stage-label">Comparing</span>
+          </div>
+          <div class="tm-a11y-stage-line ${_decisionStage === 'deciding' ? 'tm-a11y-stage-line-done' : ''}"></div>
+          <div class="tm-a11y-stage ${_decisionStage === 'deciding' ? 'tm-a11y-stage-active' : ''} ${_decisionStage !== 'deciding' ? 'tm-a11y-stage-future' : ''}" data-stage="deciding">
+            <span class="tm-a11y-stage-dot"></span>
+            <span class="tm-a11y-stage-label">Deciding</span>
+          </div>
+        </div>
+        ` : ''}
 
         ${scanState === 'scanning' ? `
         <div class="tm-a11y-scan-overlay" id="tmA11yScanOverlay">
@@ -1528,70 +1615,143 @@
 
         <!-- ═══ TAB: FILTERS ═══ -->
         <div class="tm-a11y-tab-panel ${currentPanelTab === 'filters' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabFilters" role="tabpanel">
+
+          <!-- MCDA WEIGHT SLIDERS — shown at TOP when heatmap is active -->
+          ${currentPreferences.mcdaEnabled ? renderMCDAWeightPanel() : ''}
+
           <div class="tm-a11y-panel-filters">
             
-            <!-- Price slider -->
-            <div class="tm-a11y-filter-group">
-              <label class="tm-a11y-filter-label">
-                Max Price
-                <span class="tm-a11y-filter-value tm-a11y-price-display-sync">${symbol}${currentPreferences.maxPrice}</span>
-              </label>
-              <input type="range" class="tm-a11y-slider tm-a11y-price-slider-sync"
-                min="${Math.floor(priceRange.min)}" max="${Math.ceil(priceRange.max)}" 
-                step="5" value="${currentPreferences.maxPrice}" aria-label="Maximum seat price" />
-              <div class="tm-a11y-slider-range">
-                <span>${symbol}${Math.floor(priceRange.min)}</span>
-                <span>${symbol}${Math.ceil(priceRange.max)}</span>
+            <!-- ═══ SECTION: TICKET SEARCH ═══ -->
+            <div class="tm-a11y-filter-section">
+              <div class="tm-a11y-filter-section-header">
+                <span class="tm-a11y-icon tm-a11y-icon-ticket"></span>
+                <span class="tm-a11y-filter-section-title">Ticket Search</span>
+              </div>
+
+              <!-- Price slider -->
+              <div class="tm-a11y-filter-group">
+                <label class="tm-a11y-filter-label">
+                  Max Price
+                  <span class="tm-a11y-filter-value tm-a11y-price-display-sync">${symbol}${currentPreferences.maxPrice}</span>
+                </label>
+                <input type="range" class="tm-a11y-slider tm-a11y-price-slider-sync"
+                  min="${Math.floor(priceRange.min)}" max="${Math.ceil(priceRange.max)}" 
+                  step="5" value="${currentPreferences.maxPrice}" aria-label="Maximum seat price" />
+                <div class="tm-a11y-slider-range">
+                  <span>${symbol}${Math.floor(priceRange.min)}</span>
+                  <span>${symbol}${Math.ceil(priceRange.max)}</span>
+                </div>
+              </div>
+
+              <!-- Ticket quantity + Section — side by side -->
+              <div class="tm-a11y-filter-row">
+                <div class="tm-a11y-filter-group tm-a11y-filter-half">
+                  <label class="tm-a11y-filter-label" for="tmA11yTicketQty">Tickets</label>
+                  <select id="tmA11yTicketQty" class="tm-a11y-select" aria-label="Number of tickets">
+                    ${[0,1,2,3,4,5,6].map(n => 
+                      `<option value="${n}" ${(currentPreferences.ticketQty||0)===n?'selected':''}>${n===0?'Any':n}</option>`
+                    ).join('')}
+                  </select>
+                </div>
+                <div class="tm-a11y-filter-group tm-a11y-filter-half">
+                  <label class="tm-a11y-filter-label" for="tmA11ySortBy">Sort by</label>
+                  <select id="tmA11ySortBy" class="tm-a11y-select" aria-label="Sort seats by">
+                    <option value="price-asc" ${currentPreferences.sortBy === 'price-asc' ? 'selected' : ''}>Price ↑</option>
+                    <option value="price-desc" ${currentPreferences.sortBy === 'price-desc' ? 'selected' : ''}>Price ↓</option>
+                    <option value="section" ${currentPreferences.sortBy === 'section' ? 'selected' : ''}>Section</option>
+                    <option value="quality" ${currentPreferences.sortBy === 'quality' ? 'selected' : ''}>View Quality</option>
+                    ${currentPreferences.mcdaEnabled ? `<option value="score-desc" ${currentPreferences.sortBy === 'score-desc' ? 'selected' : ''}>MCDA Score ★</option>` : ''}
+                  </select>
+                </div>
+              </div>
+
+              <!-- Section filter — full width -->
+              <div class="tm-a11y-filter-group">
+                <label class="tm-a11y-filter-label" for="tmA11ySectionFilter">Section</label>
+                <select id="tmA11ySectionFilter" class="tm-a11y-select" aria-label="Filter by section">
+                  <option value="all" ${currentPreferences.sectionFilter === 'all' ? 'selected' : ''}>All Sections (${sections.length})</option>
+                  ${sections.map(s => {
+                    const count = capturedSeats.filter(seat => seat.section === s && seat.availability === 'available').length;
+                    return `<option value="${s}" ${currentPreferences.sectionFilter === s ? 'selected' : ''}>${s} (${count})</option>`;
+                  }).join('')}
+                </select>
               </div>
             </div>
 
-            <!-- Ticket quantity -->
-            <div class="tm-a11y-filter-group">
-              <label class="tm-a11y-filter-label" for="tmA11yTicketQty">Number of Tickets</label>
-              <select id="tmA11yTicketQty" class="tm-a11y-select" aria-label="Number of tickets">
-                ${[0,1,2,3,4,5,6].map(n => 
-                  `<option value="${n}" ${(currentPreferences.ticketQty||0)===n?'selected':''}>${n===0?'Any quantity':n+' ticket'+(n>1?'s':'')}</option>`
-                ).join('')}
-              </select>
+            <!-- ═══ SECTION: DISPLAY ═══ -->
+            <div class="tm-a11y-filter-section">
+              <div class="tm-a11y-filter-section-header">
+                <span class="tm-a11y-icon tm-a11y-icon-palette"></span>
+                <span class="tm-a11y-filter-section-title">Display</span>
+              </div>
+
+              <!-- Colour scheme — with swatch preview -->
+              <div class="tm-a11y-filter-group">
+                <label class="tm-a11y-filter-label" for="tmA11yColourScheme">Colour Scheme</label>
+                <select id="tmA11yColourScheme" class="tm-a11y-select" aria-label="Colour scheme">
+                  ${Object.entries(COLOUR_SCHEMES).map(([key, scheme]) =>
+                    `<option value="${key}" ${currentPreferences.colourScheme === key ? 'selected' : ''}>${scheme.label}</option>`
+                  ).join('')}
+                </select>
+                <div class="tm-a11y-scheme-preview" id="tmA11ySchemePreview">
+                  <span class="tm-a11y-scheme-swatch" style="background:${(COLOUR_SCHEMES[currentPreferences.colourScheme] || COLOUR_SCHEMES['default'])['--tm-a11y-accent']}"></span>
+                  <span class="tm-a11y-scheme-desc">${(COLOUR_SCHEMES[currentPreferences.colourScheme] || COLOUR_SCHEMES['default']).description}</span>
+                </div>
+              </div>
             </div>
 
-            <!-- Section filter -->
-            <div class="tm-a11y-filter-group">
-              <label class="tm-a11y-filter-label" for="tmA11ySectionFilter">Section</label>
-              <select id="tmA11ySectionFilter" class="tm-a11y-select" aria-label="Filter by section">
-                <option value="all" ${currentPreferences.sectionFilter === 'all' ? 'selected' : ''}>All Sections (${sections.length})</option>
-                ${sections.map(s => {
-                  const count = capturedSeats.filter(seat => seat.section === s && seat.availability === 'available').length;
-                  return `<option value="${s}" ${currentPreferences.sectionFilter === s ? 'selected' : ''}>${s} (${count})</option>`;
-                }).join('')}
-              </select>
+            <!-- ═══ SECTION: TYPOGRAPHY ═══ -->
+            <div class="tm-a11y-filter-section">
+              <div class="tm-a11y-filter-section-header">
+                <span class="tm-a11y-icon tm-a11y-icon-typography"></span>
+                <span class="tm-a11y-filter-section-title">Typography</span>
+              </div>
+
+              <!-- Typeface with live preview -->
+              <div class="tm-a11y-filter-group">
+                <label class="tm-a11y-filter-label" for="tmA11yFontFamily">Typeface</label>
+                <select id="tmA11yFontFamily" class="tm-a11y-select" aria-label="Font family">
+                  <option value="default" ${currentPreferences.fontFamily === 'default' ? 'selected' : ''}>Default (page font)</option>
+                  <option value="arial" ${currentPreferences.fontFamily === 'arial' ? 'selected' : ''}>Arial</option>
+                  <option value="verdana" ${currentPreferences.fontFamily === 'verdana' ? 'selected' : ''}>Verdana</option>
+                  <option value="tahoma" ${currentPreferences.fontFamily === 'tahoma' ? 'selected' : ''}>Tahoma</option>
+                  <option value="trebuchet" ${currentPreferences.fontFamily === 'trebuchet' ? 'selected' : ''}>Trebuchet MS</option>
+                  <option value="atkinson" ${currentPreferences.fontFamily === 'atkinson' ? 'selected' : ''}>Atkinson Hyperlegible</option>
+                  <option value="opendyslexic" ${currentPreferences.fontFamily === 'opendyslexic' ? 'selected' : ''}>OpenDyslexic</option>
+                  <option value="comic-sans" ${currentPreferences.fontFamily === 'comic-sans' ? 'selected' : ''}>Comic Sans</option>
+                  <option value="georgia" ${currentPreferences.fontFamily === 'georgia' ? 'selected' : ''}>Georgia (Serif)</option>
+                  <option value="times" ${currentPreferences.fontFamily === 'times' ? 'selected' : ''}>Times New Roman</option>
+                </select>
+                <div class="tm-a11y-font-preview" id="tmA11yFontPreview" style="font-family: ${FONT_FAMILIES[currentPreferences.fontFamily] || 'inherit'}; font-size: ${currentPreferences.fontSize}px; line-height: ${currentPreferences.lineSpacing}">
+                  <span class="tm-a11y-font-preview-text">The quick brown fox jumps over the lazy dog</span>
+                  <span class="tm-a11y-font-preview-numbers">Section 114 · Row G · £84.50</span>
+                </div>
+              </div>
+
+              <!-- Font Size + Line Spacing — side by side -->
+              <div class="tm-a11y-filter-row">
+                <div class="tm-a11y-filter-group tm-a11y-filter-half">
+                  <label class="tm-a11y-filter-label">
+                    Size
+                    <span class="tm-a11y-filter-value" id="tmA11yFontSizeVal">${currentPreferences.fontSize}px</span>
+                  </label>
+                  <input type="range" class="tm-a11y-slider" id="tmA11yFontSize"
+                    min="12" max="28" step="1" value="${currentPreferences.fontSize}" aria-label="Font size" />
+                  <div class="tm-a11y-slider-range"><span>12</span><span>28</span></div>
+                </div>
+                <div class="tm-a11y-filter-group tm-a11y-filter-half">
+                  <label class="tm-a11y-filter-label">
+                    Spacing
+                    <span class="tm-a11y-filter-value" id="tmA11yLineSpacingVal">${currentPreferences.lineSpacing.toFixed(1)}×</span>
+                  </label>
+                  <input type="range" class="tm-a11y-slider" id="tmA11yLineSpacing"
+                    min="1.5" max="3.0" step="0.1" value="${currentPreferences.lineSpacing}" aria-label="Line spacing" />
+                  <div class="tm-a11y-slider-range"><span>1.5×</span><span>3.0×</span></div>
+                </div>
+              </div>
             </div>
 
-            <!-- Sort -->
-            <div class="tm-a11y-filter-group">
-              <label class="tm-a11y-filter-label" for="tmA11ySortBy">Sort by</label>
-              <select id="tmA11ySortBy" class="tm-a11y-select" aria-label="Sort seats by">
-                <option value="price-asc" ${currentPreferences.sortBy === 'price-asc' ? 'selected' : ''}>Price: Low → High</option>
-                <option value="price-desc" ${currentPreferences.sortBy === 'price-desc' ? 'selected' : ''}>Price: High → Low</option>
-                <option value="section" ${currentPreferences.sortBy === 'section' ? 'selected' : ''}>Section</option>
-                <option value="quality" ${currentPreferences.sortBy === 'quality' ? 'selected' : ''}>View Quality</option>
-                ${currentPreferences.mcdaEnabled ? `<option value="score-desc" ${currentPreferences.sortBy === 'score-desc' ? 'selected' : ''}>MCDA Score ★</option>` : ''}
-              </select>
-            </div>
-
-            <!-- Colour scheme -->
-            <div class="tm-a11y-filter-group">
-              <label class="tm-a11y-filter-label" for="tmA11yColourScheme">Colour Scheme</label>
-              <select id="tmA11yColourScheme" class="tm-a11y-select" aria-label="Colour scheme">
-                ${Object.entries(COLOUR_SCHEMES).map(([key, scheme]) =>
-                  `<option value="${key}" ${currentPreferences.colourScheme === key ? 'selected' : ''}>${scheme.label}</option>`
-                ).join('')}
-              </select>
-            </div>
           </div>
-
-          <!-- MCDA WEIGHT SLIDERS (visible when heatmap is active) -->
-          ${currentPreferences.mcdaEnabled ? renderMCDAWeightPanel() : ''}
         </div>
 
         <!-- ═══ TAB: VENUE ═══ -->
@@ -1661,7 +1821,7 @@
                       title="Remove all stored seat selection history">
                 <span>Clear Recommendation History</span>
               </button>
-              <p class="tm-a11y-tool-hint" style="margin-top:6px;font-size:11px;opacity:0.7">🔒 Your seat history is stored locally and never sent anywhere</p>
+              <p class="tm-a11y-tool-hint" style="margin-top:6px;font-size:11px;opacity:0.7">Your seat history is stored locally and never sent anywhere</p>
             </div>
 
             <!-- OPENAI API KEY (TIER 1 RAG) -->
@@ -1676,7 +1836,7 @@
                 </button>
               </div>
               <p class="tm-a11y-tool-hint" id="tmA11yAPIKeyStatus" style="margin-top:6px;font-size:11px;opacity:0.7"></p>
-              <p class="tm-a11y-tool-hint" style="margin-top:4px;font-size:11px;opacity:0.5">🔒 Key stored locally via chrome.storage. Never sent anywhere except OpenAI's API.</p>
+              <p class="tm-a11y-tool-hint" style="margin-top:4px;font-size:11px;opacity:0.5">Key stored locally via chrome.storage. Never sent anywhere except OpenAI's API.</p>
             </div>
           </div>
         </div>
@@ -1996,12 +2156,16 @@
     // Section filter
     document.getElementById('tmA11ySectionFilter')?.addEventListener('change', (e) => {
       currentPreferences.sectionFilter = e.target.value;
+      _decisionInteractions.filtersApplied = true;
+      computeDecisionStage();
       renderPanelContent();
     });
 
     // Sort
     document.getElementById('tmA11ySortBy')?.addEventListener('change', (e) => {
       currentPreferences.sortBy = e.target.value;
+      _decisionInteractions.filtersApplied = true;
+      computeDecisionStage();
       renderPanelContent();
     });
 
@@ -2009,6 +2173,55 @@
     document.getElementById('tmA11yColourScheme')?.addEventListener('change', (e) => {
       currentPreferences.colourScheme = e.target.value;
       applyColourScheme(e.target.value);
+      // Update scheme preview
+      const preview = document.getElementById('tmA11ySchemePreview');
+      if (preview) {
+        const scheme = COLOUR_SCHEMES[e.target.value] || COLOUR_SCHEMES['default'];
+        const swatch = preview.querySelector('.tm-a11y-scheme-swatch');
+        const desc = preview.querySelector('.tm-a11y-scheme-desc');
+        if (swatch) swatch.style.background = scheme['--tm-a11y-accent'];
+        if (desc) desc.textContent = scheme.description;
+      }
+      broadcastPreferences();
+    });
+
+    // === Typography controls ===
+    document.getElementById('tmA11yFontFamily')?.addEventListener('change', (e) => {
+      currentPreferences.fontFamily = e.target.value;
+      applyTypography();
+      // Update font preview
+      const preview = document.getElementById('tmA11yFontPreview');
+      if (preview) {
+        preview.style.fontFamily = FONT_FAMILIES[e.target.value] || 'inherit';
+      }
+      broadcastPreferences();
+    });
+
+    document.getElementById('tmA11yFontSize')?.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value, 10);
+      const display = document.getElementById('tmA11yFontSizeVal');
+      if (display) display.textContent = `${val}px`;
+      // Update font preview size
+      const preview = document.getElementById('tmA11yFontPreview');
+      if (preview) preview.style.fontSize = `${val}px`;
+    });
+    document.getElementById('tmA11yFontSize')?.addEventListener('change', (e) => {
+      currentPreferences.fontSize = parseInt(e.target.value, 10);
+      applyTypography();
+      broadcastPreferences();
+    });
+
+    document.getElementById('tmA11yLineSpacing')?.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      const display = document.getElementById('tmA11yLineSpacingVal');
+      if (display) display.textContent = `${val.toFixed(1)}×`;
+      // Update font preview spacing
+      const preview = document.getElementById('tmA11yFontPreview');
+      if (preview) preview.style.lineHeight = `${val}`;
+    });
+    document.getElementById('tmA11yLineSpacing')?.addEventListener('change', (e) => {
+      currentPreferences.lineSpacing = parseFloat(e.target.value);
+      applyTypography();
       broadcastPreferences();
     });
 
@@ -2174,6 +2387,8 @@
           // ── Tier 2: Record pin as a preference signal ──
           if (isSeatPinned(seat)) {
             UserPreferenceEngine.recordSelection(seat, eventMeta.eventId, eventMeta.venue);
+            _decisionInteractions.seatsPinned = pinnedSeats.length;
+            computeDecisionStage();
           }
         }
       });
@@ -2187,6 +2402,8 @@
         const seat = capturedSeats.find(s => s.id === seatId);
         if (seat) {
           UserPreferenceEngine.recordSelection(seat, eventMeta.eventId, eventMeta.venue);
+          _decisionInteractions.seatsLiked++;
+          computeDecisionStage();
           btn.classList.add('tm-a11y-like-active');
           btn.title = 'Saved ✓';
           setTimeout(() => {
@@ -2200,6 +2417,8 @@
     // === NEW: Clear pinned seats ===
     document.getElementById('tmA11yClearPins')?.addEventListener('click', () => {
       pinnedSeats = [];
+      _decisionInteractions.seatsPinned = 0;
+      computeDecisionStage();
       renderPanelContent();
     });
 
@@ -2219,13 +2438,44 @@
     document.querySelectorAll('.tm-a11y-seat-card').forEach(card => {
       card.addEventListener('click', (e) => {
         if (e.target.closest('.tm-a11y-card-select-btn, .tm-a11y-card-qty, .tm-a11y-pin-btn, .tm-a11y-like-btn')) return;
+        _decisionInteractions.seatsViewed++;
+        computeDecisionStage();
         currentAdapter.scrollToSeat(card.dataset.seatId);
       });
     });
 
-    // === Tier 2: Recommendation dismiss ===
+    // === Implicit rejection tracking: seat visible >3s without interaction ===
+    document.querySelectorAll('.tm-a11y-seat-card').forEach(card => {
+      let viewTimer = null;
+      const seatId = card.dataset.seatId;
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            viewTimer = setTimeout(() => {
+              const seat = capturedSeats.find(s => s.id === seatId);
+              if (seat && !isSeatPinned(seat)) {
+                UserPreferenceEngine.recordRejection(seat, 'scroll_past');
+              }
+            }, 3000);
+          } else {
+            if (viewTimer) clearTimeout(viewTimer);
+          }
+        });
+      }, { threshold: 0.5 });
+      observer.observe(card);
+      // Cancel rejection if user interacts
+      card.addEventListener('click', () => { if (viewTimer) clearTimeout(viewTimer); });
+    });
+
+    // === Tier 2: Recommendation dismiss (+ negative signal recording) ===
     document.getElementById('tmA11yRecDismiss')?.addEventListener('click', () => {
       _recDismissed = true;
+      // Record dismissed recommendations as strong negative signals
+      if (_cachedRecommendations) {
+        _cachedRecommendations.forEach(rec => {
+          UserPreferenceEngine.recordRejection(rec.seat, 'dismiss');
+        });
+      }
       const recPanel = document.getElementById('tmA11yRecPanel');
       if (recPanel) recPanel.remove();
     });
@@ -2915,55 +3165,50 @@
 
     const propsString = importantProps.join('; ');
 
+    // ── WHITELIST APPROACH ──
+    // Instead of styling everything and excluding the map (unreliable),
+    // we ONLY target known text-heavy areas on the page:
+    //   - TM's sidebar listing panel (ticket cards, filters, headers)
+    //   - TM's event info header
+    //   - TM's navigation / breadcrumbs
+    //   - Any text outside the SVG seat map area
+    // The seat map SVG and its parent containers are never touched.
     styleElement = document.createElement('style');
     styleElement.id = 'tm-a11y-typography-override';
     styleElement.textContent = `
-      html body *:not(#tm-a11y-companion-panel *):not(#tm-a11y-panel-tab) { ${propsString}; }
-      html body [class]:not(#tm-a11y-companion-panel [class]) { ${propsString}; }
-      html body [class^="sc-"]:not(#tm-a11y-companion-panel *) { ${propsString}; }
-      html body [data-testid]:not(#tm-a11y-companion-panel *) { ${propsString}; }
+      /* TM sidebar / ticket listing area */
+      [class*="listing"] *, [class*="Listing"] *,
+      [class*="ticket"] *, [class*="Ticket"] *,
+      [class*="TicketCard"] *, [class*="ListingCard"] *,
+      [class*="offer"] *, [class*="Offer"] *,
+      [class*="results"] *, [class*="Results"] *,
+
+      /* TM event header / info bar */
+      [class*="event-header"] *, [class*="EventHeader"] *,
+      [class*="event-info"] *, [class*="EventInfo"] *,
+      [class*="breadcrumb"] *, [class*="Breadcrumb"] *,
+
+      /* TM navigation / chrome */
+      header *, nav *, footer *,
+      [class*="banner"] *, [class*="Banner"] *,
+      [class*="notice"] *, [class*="Notice"] *,
+      [class*="info-bar"] *, [class*="InfoBar"] *,
+
+      /* Viagogo / StubHub listing areas */
+      [class*="SimilarListings"] *, [class*="FilterBar"] *,
+      [class*="search-result"] *, [class*="SearchResult"] *,
+      [data-testid*="listing"] *, [data-testid*="ticket"] *,
+      [role="list"] > *, [role="listbox"] > *
+      { ${propsString}; }
     `;
     document.head.appendChild(styleElement);
 
-    // Inline styles — skip our own panel
-    document.body.querySelectorAll('*').forEach(el => {
-      if (el.closest('#tm-a11y-companion-panel') || el.id === 'tm-a11y-panel-tab') return;
-      const tag = el.tagName.toLowerCase();
-      if (['script', 'style', 'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'g', 'defs', 'use', 'symbol', 'clippath', 'mask'].includes(tag)) return;
-
-      if (fontFamilyValue) el.style.setProperty('font-family', fontFamilyValue, 'important');
-      if (fontSize !== 16) el.style.setProperty('font-size', `${fontSize}px`, 'important');
-      if (lineSpacing !== 1.5) el.style.setProperty('line-height', String(lineSpacing), 'important');
-      el.setAttribute('data-tm-a11y-styled', 'true');
-    });
-
-    // Observer for dynamically added elements
-    if (mutationObserver) mutationObserver.disconnect();
-    mutationObserver = new MutationObserver((mutations) => {
-      mutations.forEach(m => m.addedNodes.forEach(node => {
-        if (node.nodeType === Node.ELEMENT_NODE && !node.closest?.('#tm-a11y-companion-panel')) {
-          applyTypoToElement(node, fontFamilyValue, fontSize, lineSpacing);
-        }
-      }));
-    });
-    mutationObserver.observe(document.body, { childList: true, subtree: true });
+    // No inline style walking — the CSS rules above handle it.
+    // This avoids the O(n) DOM walk that was overriding map elements.
   }
 
-  function applyTypoToElement(el, fontFamily, fontSize, lineSpacing) {
-    const skip = ['script', 'style', 'svg', 'path', 'circle', 'rect', 'line', 'polygon', 'polyline', 'g', 'defs', 'use', 'symbol', 'clippath', 'mask'];
-    if (skip.includes(el.tagName?.toLowerCase())) return;
-    if (fontFamily) el.style.setProperty('font-family', fontFamily, 'important');
-    if (fontSize !== 16) el.style.setProperty('font-size', `${fontSize}px`, 'important');
-    if (lineSpacing !== 1.5) el.style.setProperty('line-height', String(lineSpacing), 'important');
-    el.setAttribute('data-tm-a11y-styled', 'true');
-    el.querySelectorAll('*').forEach(child => {
-      if (!skip.includes(child.tagName?.toLowerCase())) {
-        if (fontFamily) child.style.setProperty('font-family', fontFamily, 'important');
-        if (fontSize !== 16) child.style.setProperty('font-size', `${fontSize}px`, 'important');
-        if (lineSpacing !== 1.5) child.style.setProperty('line-height', String(lineSpacing), 'important');
-        child.setAttribute('data-tm-a11y-styled', 'true');
-      }
-    });
+  function applyTypoToElement() {
+    // No-op: typography is now CSS-only (no inline styles needed)
   }
 
   function removeTypography() {
@@ -4167,23 +4412,29 @@
 
 
   // ══════════════════════════════════════════════════════════════
-  // 10. COGNITIVE LOAD REDUCTION — RECOMMENDATION ENGINE (TIER 2)
+  // 10. COGNITIVE LOAD REDUCTION — RECOMMENDATION ENGINE v2 (kNN)
   // ══════════════════════════════════════════════════════════════
 
   const UserPreferenceEngine = {
     _db: null,
     _dbName: 'SeatFinderUserPrefs',
     _storeName: 'seatSelections',
+    _rejectionStore: 'seatRejections',
     _maxRecords: 50,
+    _maxRejections: 100,
     _minSampleSize: 3,
-    _profile: null,      // Cached preference profile
-    _profileDirty: true, // Whether profile needs recompute
+    _profile: null,
+    _profileDirty: true,
+    _featureStats: null,
+    _knnK: 5,
+    _sectionHashCache: {},
+    _baseWeights: [1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5],
 
-    /** Initialise IndexedDB */
+    // ── Initialise IndexedDB v2 (adds rejections store) ──
     async init() {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         try {
-          const request = indexedDB.open(this._dbName, 1);
+          const request = indexedDB.open(this._dbName, 2);
           request.onupgradeneeded = (e) => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains(this._storeName)) {
@@ -4191,15 +4442,20 @@
               store.createIndex('timestamp', 'timestamp', { unique: false });
               store.createIndex('eventId', 'eventId', { unique: false });
             }
+            if (!db.objectStoreNames.contains(this._rejectionStore)) {
+              const rejStore = db.createObjectStore(this._rejectionStore, { keyPath: 'id', autoIncrement: true });
+              rejStore.createIndex('timestamp', 'timestamp', { unique: false });
+              rejStore.createIndex('seatKey', 'seatKey', { unique: false });
+            }
           };
           request.onsuccess = (e) => {
             this._db = e.target.result;
-            console.log('[A11y Helper] 🧠 Recommendation engine: IndexedDB ready');
+            console.log('[A11y Helper] 🧠 Recommendation engine v2 (kNN): IndexedDB ready');
             resolve();
           };
           request.onerror = (e) => {
-            console.log('[A11y Helper] 🧠 IndexedDB init failed:', e.target.error);
-            resolve(); // Don't block — graceful degradation
+            console.log('[A11y Helper] 🧠 IndexedDB init failed:', e.target?.error);
+            resolve();
           };
         } catch (e) {
           console.log('[A11y Helper] 🧠 IndexedDB not available:', e.message);
@@ -4208,9 +4464,7 @@
       });
     },
 
-    /**
-     * Record a seat selection. Called when user clicks "Select" on a seat card.
-     */
+    // ── Record positive signal (selection/like/pin) ──
     async recordSelection(seat, eventId, venueName) {
       if (!this._db) return;
       try {
@@ -4226,31 +4480,25 @@
           sellerType: seat.sellerType || 'primary',
           type: seat.type || 'standard',
           qualityScore: seat.qualityScore || null,
-          rowNumber: parseRowNumber(seat.row)
+          rowNumber: parseRowNumber(seat.row),
+          aisleAccess: seat.aisleAccess || false,
+          sectionNormalised: seat.section?.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || ''
         };
-
         const tx = this._db.transaction(this._storeName, 'readwrite');
         const store = tx.objectStore(this._storeName);
         store.add(record);
-
-        // Enforce rolling window (max 50 records)
         const countReq = store.count();
         countReq.onsuccess = () => {
           if (countReq.result > this._maxRecords) {
             const idx = store.index('timestamp');
-            const cursor = idx.openCursor(); // oldest first
+            const cursor = idx.openCursor();
             let toDelete = countReq.result - this._maxRecords;
             cursor.onsuccess = (e) => {
               const cur = e.target.result;
-              if (cur && toDelete > 0) {
-                cur.delete();
-                toDelete--;
-                cur.continue();
-              }
+              if (cur && toDelete > 0) { cur.delete(); toDelete--; cur.continue(); }
             };
           }
         };
-
         this._profileDirty = true;
         console.log(`[A11y Helper] 🧠 Recorded selection: ${seat.section} @ ${seat.price}`);
       } catch (e) {
@@ -4258,84 +4506,233 @@
       }
     },
 
-    /** Get all stored selections */
+    // ── Record negative signal (dismiss/skip/scroll_past) ──
+    async recordRejection(seat, reason = 'skip') {
+      if (!this._db) return;
+      try {
+        const seatKey = `${seat.section}|${seat.row}|${seat.price}`;
+        const tx = this._db.transaction(this._rejectionStore, 'readwrite');
+        const store = tx.objectStore(this._rejectionStore);
+        store.add({
+          timestamp: Date.now(), seatKey,
+          section: seat.section, row: seat.row, price: seat.price,
+          rowNumber: parseRowNumber(seat.row),
+          sellerType: seat.sellerType || 'primary',
+          type: seat.type || 'standard',
+          reason
+        });
+        const countReq = store.count();
+        countReq.onsuccess = () => {
+          if (countReq.result > this._maxRejections) {
+            const idx = store.index('timestamp');
+            const cursor = idx.openCursor();
+            let toDelete = countReq.result - this._maxRejections;
+            cursor.onsuccess = (e) => {
+              const cur = e.target.result;
+              if (cur && toDelete > 0) { cur.delete(); toDelete--; cur.continue(); }
+            };
+          }
+        };
+        this._profileDirty = true;
+      } catch (e) { /* Silent — rejections are supplementary */ }
+    },
+
+    // ── Data access helpers ──
     async _getAllSelections() {
       if (!this._db) return [];
       return new Promise((resolve) => {
         try {
           const tx = this._db.transaction(this._storeName, 'readonly');
-          const store = tx.objectStore(this._storeName);
-          const req = store.getAll();
+          const req = tx.objectStore(this._storeName).getAll();
           req.onsuccess = () => resolve(req.result || []);
           req.onerror = () => resolve([]);
-        } catch (e) {
-          resolve([]);
-        }
+        } catch (e) { resolve([]); }
       });
     },
 
-    /** Get selection count */
+    async _getAllRejections() {
+      if (!this._db) return [];
+      return new Promise((resolve) => {
+        try {
+          if (!this._db.objectStoreNames.contains(this._rejectionStore)) { resolve([]); return; }
+          const tx = this._db.transaction(this._rejectionStore, 'readonly');
+          const req = tx.objectStore(this._rejectionStore).getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        } catch (e) { resolve([]); }
+      });
+    },
+
     async getSelectionCount() {
       if (!this._db) return 0;
       return new Promise((resolve) => {
         try {
           const tx = this._db.transaction(this._storeName, 'readonly');
-          const store = tx.objectStore(this._storeName);
-          const req = store.count();
+          const req = tx.objectStore(this._storeName).count();
           req.onsuccess = () => resolve(req.result || 0);
           req.onerror = () => resolve(0);
-        } catch (e) {
-          resolve(0);
-        }
+        } catch (e) { resolve(0); }
       });
     },
 
-    /**
-     * Build user preference profile from historical selections.
-     * Returns null if < 3 selections.
-     */
-    async buildProfile() {
-      if (!this._profileDirty && this._profile) return this._profile;
+    // ── Feature extraction: seat → 7-dim numeric vector ──
+    // [price, rowNumber, sectionHash, isResale, isVIP, isAisle, isAccessible]
+    _hashSection(section) {
+      if (!section) return 0;
+      const key = section.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+      if (this._sectionHashCache[key] !== undefined) return this._sectionHashCache[key];
+      let hash = 0;
+      for (let i = 0; i < key.length; i++) hash = ((hash << 5) - hash + key.charCodeAt(i)) | 0;
+      const normalised = Math.abs(hash) % 1000;
+      this._sectionHashCache[key] = normalised;
+      return normalised;
+    },
 
-      const selections = await this._getAllSelections();
-      if (selections.length < this._minSampleSize) {
-        this._profile = null;
-        return null;
+    _extractFeatures(seatOrRecord) {
+      return [
+        seatOrRecord.price || 0,
+        seatOrRecord.rowNumber ?? parseRowNumber(seatOrRecord.row) ?? 15,
+        this._hashSection(seatOrRecord.section),
+        (seatOrRecord.sellerType === 'resale') ? 1 : 0,
+        (seatOrRecord.type === 'vip' || seatOrRecord.type === 'premium') ? 1 : 0,
+        (seatOrRecord.aisleAccess) ? 1 : 0,
+        (seatOrRecord.type === 'accessible') ? 1 : 0
+      ];
+    },
+
+    // ── Min-max normalisation ──
+    _computeFeatureStats(allFeatureVectors) {
+      if (allFeatureVectors.length === 0) return null;
+      const dims = allFeatureVectors[0].length;
+      const mins = new Array(dims).fill(Infinity);
+      const maxs = new Array(dims).fill(-Infinity);
+      for (const vec of allFeatureVectors) {
+        for (let d = 0; d < dims; d++) {
+          if (vec[d] < mins[d]) mins[d] = vec[d];
+          if (vec[d] > maxs[d]) maxs[d] = vec[d];
+        }
+      }
+      return { mins, maxs, dims };
+    },
+
+    _normalise(featureVec, stats) {
+      if (!stats) return featureVec;
+      return featureVec.map((val, d) => {
+        const range = stats.maxs[d] - stats.mins[d];
+        return range === 0 ? 0.5 : (val - stats.mins[d]) / range;
+      });
+    },
+
+    // ── Profile-aware feature weights ──
+    _getProfileAwareWeights(activeSensoryProfile, venueMeta) {
+      const w = [...this._baseWeights];
+      // indices: [0:price, 1:row, 2:section, 3:resale, 4:vip, 5:aisle, 6:accessible]
+      if (activeSensoryProfile) {
+        const mcda = activeSensoryProfile.mcdaWeights;
+        if (mcda) {
+          const total = (mcda.price||25) + (mcda.viewQuality||25) + (mcda.proximity||25) + (mcda.aisleAccess||25);
+          w[0] = (mcda.price||25) / total * 4;
+          w[1] = (mcda.proximity||25) / total * 4;
+          w[2] = (mcda.viewQuality||25) / total * 4;
+          w[5] = (mcda.aisleAccess||25) / total * 4;
+        }
+        const id = activeSensoryProfile.id || '';
+        const name = (activeSensoryProfile.name || '').toLowerCase();
+        if (id.includes('low-stim') || name.includes('low stim') || name.includes('sensory')) {
+          w[5] *= 2.0; w[6] *= 1.5; w[0] *= 0.6; w[1] *= 1.3;
+        }
+        if (id.includes('budget') || name.includes('budget')) {
+          w[0] *= 2.5; w[4] *= 0.3;
+        }
+        if (id.includes('high-contrast') || name.includes('focus')) {
+          w[2] *= 1.5; w[1] *= 1.3;
+        }
+      }
+      if (venueMeta) {
+        if (venueMeta.quiet_space === 'yes') w[6] *= 1.3;
+        if (venueMeta.companion_seating === 'yes') w[6] *= 1.2;
+        if (venueMeta.hearing_loop === 'yes') w[2] *= 1.1;
+      }
+      return w;
+    },
+
+    // ── kNN scoring engine ──
+    _weightedDistance(vecA, vecB, weights) {
+      let sum = 0;
+      for (let d = 0; d < vecA.length; d++) {
+        const diff = vecA[d] - vecB[d];
+        sum += weights[d] * diff * diff;
+      }
+      return Math.sqrt(sum);
+    },
+
+    _knnScore(candidateFeatures, positiveVectors, rejectionVectors, weights, stats) {
+      const normCandidate = this._normalise(candidateFeatures, stats);
+      const distances = positiveVectors.map((vec, idx) => ({
+        idx, dist: this._weightedDistance(normCandidate, vec, weights)
+      }));
+      distances.sort((a, b) => a.dist - b.dist);
+      const k = Math.min(this._knnK, distances.length);
+      const kNearest = distances.slice(0, k);
+      const meanDist = kNearest.reduce((sum, d) => sum + d.dist, 0) / k;
+      const similarity = 1 / (1 + meanDist);
+
+      // Rejection penalty
+      let rejectionPenalty = 0;
+      if (rejectionVectors.length > 0) {
+        const rejDistances = rejectionVectors.map(rv =>
+          this._weightedDistance(normCandidate, rv.vec, weights)
+        );
+        for (let i = 0; i < rejDistances.length; i++) {
+          if (rejDistances[i] < 0.3) {
+            const rv = rejectionVectors[i];
+            const strengthMul = rv.reason === 'dismiss' ? 1.0 : rv.reason === 'skip' ? 0.6 : 0.3;
+            const proximityFactor = 1 - (rejDistances[i] / 0.3);
+            rejectionPenalty += proximityFactor * strengthMul * 8;
+          }
+        }
+        rejectionPenalty = Math.min(rejectionPenalty, 25);
       }
 
+      const finalScore = Math.max(0, Math.min(100, Math.round(similarity * 100 - rejectionPenalty)));
+      return {
+        score: finalScore, similarity, meanDistance: meanDist,
+        rejectionPenalty: Math.round(rejectionPenalty * 10) / 10,
+        kUsed: k, nearestIndices: kNearest.map(d => d.idx)
+      };
+    },
+
+    // ── Build profile (computes feature vectors + normalisation stats) ──
+    async buildProfile() {
+      if (!this._profileDirty && this._profile) return this._profile;
+      const selections = await this._getAllSelections();
+      if (selections.length < this._minSampleSize) { this._profile = null; return null; }
+      const rejections = await this._getAllRejections();
+
+      const positiveVectors = selections.map(s => this._extractFeatures(s));
+      const rejectionVectorsRaw = rejections.map(r => ({ vec: this._extractFeatures(r), reason: r.reason || 'skip' }));
+      const allVectors = [...positiveVectors, ...rejectionVectorsRaw.map(r => r.vec)];
+      this._featureStats = this._computeFeatureStats(allVectors);
+
+      const normPositive = positiveVectors.map(v => this._normalise(v, this._featureStats));
+      const normRejections = rejectionVectorsRaw.map(r => ({ vec: this._normalise(r.vec, this._featureStats), reason: r.reason }));
+
+      // Legacy profile fields for display/MCDA
       const prices = selections.map(s => s.price).filter(p => p > 0);
-      const sections = {};
+      const sectionCounts = {};
       const rows = [];
-      let resaleCount = 0;
-      let vipCount = 0;
-      const avoidedSections = new Map(); // track sections user left (selected then abandoned)
-
+      let resaleCount = 0, vipCount = 0;
       selections.forEach(s => {
-        // Section frequency
-        sections[s.section] = (sections[s.section] || 0) + 1;
-
-        // Row numbers
-        if (s.rowNumber !== null && s.rowNumber !== undefined) {
-          rows.push(s.rowNumber);
-        }
-
-        // Seller type
+        sectionCounts[s.section] = (sectionCounts[s.section] || 0) + 1;
+        const rn = s.rowNumber ?? parseRowNumber(s.row);
+        if (rn !== null && rn !== undefined) rows.push(rn);
         if (s.sellerType === 'resale') resaleCount++;
         if (s.type === 'vip' || s.type === 'premium') vipCount++;
       });
-
-      // Normalise section frequencies
       const total = selections.length;
       const sectionFreq = {};
-      for (const [sec, count] of Object.entries(sections)) {
-        sectionFreq[sec] = count / total;
-      }
-
-      // Sort sections by frequency
-      const sortedSections = Object.entries(sectionFreq)
-        .sort((a, b) => b[1] - a[1]);
-
-      // Preferred sections (top sections accounting for >= 60% of choices)
+      for (const [sec, count] of Object.entries(sectionCounts)) sectionFreq[sec] = count / total;
+      const sortedSections = Object.entries(sectionFreq).sort((a, b) => b[1] - a[1]);
       const preferredSections = {};
       let cumFreq = 0;
       for (const [sec, freq] of sortedSections) {
@@ -4343,195 +4740,153 @@
         cumFreq += freq;
         if (cumFreq >= 0.6 && Object.keys(preferredSections).length >= 2) break;
       }
-
-      // Preferred rows
       const avgRow = rows.length > 0 ? rows.reduce((a, b) => a + b, 0) / rows.length : null;
-      const preferredRows = rows.length > 0
-        ? [...new Set(rows)].sort((a, b) => a - b).map(String)
-        : [];
-
-      // Proximity preference
-      let proximityPref = 'middle';
-      if (avgRow !== null) {
-        if (avgRow <= 10) proximityPref = 'front';
-        else if (avgRow >= 25) proximityPref = 'back';
-      }
-
       const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+
+      // Build avoided sections from rejections
+      const rejectedSections = {};
+      rejections.forEach(r => { if (r.section) rejectedSections[r.section] = (rejectedSections[r.section] || 0) + 1; });
+      const avoidsSections = Object.entries(rejectedSections)
+        .filter(([sec, count]) => count >= 3 && !sectionCounts[sec])
+        .map(([sec]) => sec);
+
+      let proximityPref = 'middle';
+      if (avgRow !== null) { if (avgRow <= 10) proximityPref = 'front'; else if (avgRow >= 25) proximityPref = 'back'; }
 
       this._profile = {
         avg_price: Math.round(avgPrice * 100) / 100,
-        price_range: {
-          min: prices.length > 0 ? Math.min(...prices) : 0,
-          max: prices.length > 0 ? Math.max(...prices) : 0
-        },
-        price_tolerance: Math.round(avgPrice * 0.2 * 100) / 100, // ±20%
+        price_range: { min: prices.length > 0 ? Math.min(...prices) : 0, max: prices.length > 0 ? Math.max(...prices) : 0 },
+        price_tolerance: Math.round(avgPrice * 0.2 * 100) / 100,
         preferred_sections: preferredSections,
-        preferred_rows: preferredRows,
+        preferred_rows: rows.length > 0 ? [...new Set(rows)].sort((a, b) => a - b).map(String) : [],
         avg_row_number: avgRow !== null ? Math.round(avgRow * 10) / 10 : null,
         proximity_preference: proximityPref,
-        avoids_sections: [], // Could be enriched with journal data
+        avoids_sections: avoidsSections,
         prefers_resale: resaleCount > total * 0.5,
         prefers_vip: vipCount > total * 0.3,
-        sample_size: total
+        sample_size: total,
+        _positiveVectors: normPositive,
+        _rejectionVectors: normRejections,
+        _featureStats: this._featureStats,
+        _rejectionCount: rejections.length
       };
-
       this._profileDirty = false;
       return this._profile;
     },
 
-    /**
-     * Score a seat (0–100) based on user preference profile.
-     * Formula:
-     *   50 (neutral) + price match (±30) + section match (±25) + row match (±25)
-     *   - avoid penalty (-15) + seller bonus (+5)
-     */
-    scoreSeat(seat, profile) {
-      if (!profile) return null;
-
-      let score = 50; // neutral base
-
-      // ── Price match (max 30 pts) ──
-      if (profile.avg_price > 0) {
-        const priceDiff = Math.abs(seat.price - profile.avg_price);
-        const tolerance = profile.price_tolerance || (profile.avg_price * 0.2);
-        if (priceDiff <= tolerance) {
-          // Within tolerance: 20–30 points based on closeness
-          score += 20 + (10 * (1 - priceDiff / tolerance));
-        } else if (priceDiff <= tolerance * 2) {
-          // Close but outside: 5–20 points
-          score += 5 + (15 * (1 - (priceDiff - tolerance) / tolerance));
-        } else {
-          // Far from preferred price: 0 or slight penalty
-          score -= 5;
-        }
-      }
-
-      // ── Section preference (max 25 pts) ──
-      const sectionFreq = profile.preferred_sections[seat.section] || 0;
-      if (sectionFreq > 0) {
-        score += Math.round(25 * sectionFreq); // Higher frequency = more points
-      }
-
-      // ── Row proximity (max 25 pts) ──
-      if (profile.avg_row_number !== null) {
-        const rowNum = parseRowNumber(seat.row);
-        if (rowNum !== null) {
-          const rowDiff = Math.abs(rowNum - profile.avg_row_number);
-          if (rowDiff <= 3) {
-            score += 25 - (rowDiff * 3); // Very close to preferred rows
-          } else if (rowDiff <= 10) {
-            score += 10 - rowDiff; // Somewhat close
-          }
-          // Far away: no bonus
-        }
-      }
-
-      // ── Avoid penalty (-15) ──
-      if (profile.avoids_sections.includes(seat.section)) {
-        score -= 15;
-      }
-
-      // ── Seller preference bonus (+5) ──
-      if (profile.prefers_resale && seat.sellerType === 'resale') score += 5;
-      if (!profile.prefers_resale && seat.sellerType === 'primary') score += 5;
-
-      return Math.max(0, Math.min(100, Math.round(score)));
+    // ── Score a seat (kNN-based) ──
+    scoreSeat(seat, profile, activeSensoryProfile, venueMeta) {
+      if (!profile || !profile._positiveVectors || profile._positiveVectors.length === 0) return null;
+      const candidateFeatures = this._extractFeatures(seat);
+      const weights = this._getProfileAwareWeights(activeSensoryProfile, venueMeta);
+      return this._knnScore(candidateFeatures, profile._positiveVectors, profile._rejectionVectors || [], weights, profile._featureStats).score;
     },
 
-    /**
-     * Get top 3 recommended seats from the available set.
-     * Returns array of { seat, score, reasons[] } or empty array.
-     */
-    async getRecommendations(availableSeats) {
+    scoreSeatDetailed(seat, profile, activeSensoryProfile, venueMeta) {
+      if (!profile || !profile._positiveVectors || profile._positiveVectors.length === 0) return null;
+      const candidateFeatures = this._extractFeatures(seat);
+      const weights = this._getProfileAwareWeights(activeSensoryProfile, venueMeta);
+      return this._knnScore(candidateFeatures, profile._positiveVectors, profile._rejectionVectors || [], weights, profile._featureStats);
+    },
+
+    // ── Get recommendations (profile + venue aware) ──
+    async getRecommendations(availableSeats, activeSensoryProfile, venueMeta) {
       const profile = await this.buildProfile();
       if (!profile || profile.sample_size < this._minSampleSize) return [];
-
       const scored = availableSeats
         .filter(s => s.availability === 'available')
         .map(seat => {
-          const score = this.scoreSeat(seat, profile);
-          const reasons = this._generateReasons(seat, profile, score);
-          return { seat, score, reasons };
+          const score = this.scoreSeat(seat, profile, activeSensoryProfile, venueMeta);
+          const detailed = this.scoreSeatDetailed(seat, profile, activeSensoryProfile, venueMeta);
+          const reasons = this._generateReasons(seat, profile, score, detailed, activeSensoryProfile, venueMeta);
+          return { seat, score, reasons, detailed };
         })
-        .filter(r => r.score >= 55) // Only recommend above-neutral seats
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3);
+        .filter(r => r.score >= 55)
+        .sort((a, b) => b.score - a.score);
 
-      return scored;
+      // Diversity filter: avoid 3 from same section+row
+      const diverse = [];
+      const seenKeys = new Set();
+      for (const rec of scored) {
+        const key = `${rec.seat.section}|${rec.seat.row}`;
+        if (seenKeys.has(key) && diverse.length > 0) continue;
+        diverse.push(rec);
+        seenKeys.add(key);
+        if (diverse.length >= 3) break;
+      }
+      return diverse;
     },
 
-    /** Generate human-readable reasons for a recommendation */
-    _generateReasons(seat, profile, score) {
+    // ── Reason generation (sensory + venue context aware) ──
+    _generateReasons(seat, profile, score, detailed, activeSensoryProfile, venueMeta) {
       const reasons = [];
-
-      // Price match
       if (profile.avg_price > 0) {
         const diff = Math.abs(seat.price - profile.avg_price);
-        const tolerance = profile.price_tolerance || (profile.avg_price * 0.2);
-        if (diff <= tolerance) {
-          reasons.push('Near your usual price');
-        }
+        const tol = profile.price_tolerance || (profile.avg_price * 0.2);
+        if (diff <= tol) reasons.push('Near your usual price');
+        else if (seat.price < profile.avg_price * 0.8) reasons.push('Below your typical spend');
       }
-
-      // Section match
       if (profile.preferred_sections[seat.section]) {
-        reasons.push('In a section you tend to choose');
+        reasons.push(profile.preferred_sections[seat.section] >= 0.3 ? 'In a section you frequently choose' : 'In a section you\'ve picked before');
       }
-
-      // Row match
       if (profile.avg_row_number !== null) {
         const rowNum = parseRowNumber(seat.row);
-        if (rowNum !== null && Math.abs(rowNum - profile.avg_row_number) <= 5) {
-          reasons.push('Similar row to your past picks');
+        if (rowNum !== null && Math.abs(rowNum - profile.avg_row_number) <= 5) reasons.push('Similar row to your past picks');
+      }
+      if (activeSensoryProfile) {
+        const name = (activeSensoryProfile.name || '').toLowerCase();
+        if (name.includes('low stim') || name.includes('sensory')) {
+          if (seat.aisleAccess) reasons.push('Aisle seat — easy exit for sensory breaks');
+          if (seat.type === 'accessible') reasons.push('Accessible area — typically quieter');
         }
       }
-
-      if (reasons.length === 0 && score >= 55) {
-        reasons.push('Good overall match to your history');
+      if (venueMeta) {
+        if (venueMeta.quiet_space === 'yes' && seat.type === 'accessible') reasons.push('Venue has a quiet space nearby');
+        if (venueMeta.companion_seating === 'yes' && seat.type === 'accessible') reasons.push('Companion seating available');
       }
-
+      if (detailed && detailed.rejectionPenalty > 0 && detailed.rejectionPenalty < 3) {
+        reasons.push('Different from seats you\'ve skipped');
+      }
+      if (reasons.length === 0 && score >= 55) reasons.push('Good overall match based on your history');
       return reasons;
     },
 
-    /**
-     * Clear all stored selection history.
-     */
+    // ── Clear history (selections + rejections) ──
     async clearHistory() {
       if (!this._db) return 0;
       return new Promise((resolve) => {
         try {
-          const tx = this._db.transaction(this._storeName, 'readwrite');
+          const storeNames = [this._storeName];
+          if (this._db.objectStoreNames.contains(this._rejectionStore)) storeNames.push(this._rejectionStore);
+          const tx = this._db.transaction(storeNames, 'readwrite');
           const store = tx.objectStore(this._storeName);
           const countReq = store.count();
           countReq.onsuccess = () => {
             const count = countReq.result;
             store.clear();
+            if (storeNames.includes(this._rejectionStore)) tx.objectStore(this._rejectionStore).clear();
             this._profile = null;
             this._profileDirty = true;
-            console.log(`[A11y Helper] 🧠 Cleared ${count} selections`);
+            this._featureStats = null;
+            this._sectionHashCache = {};
+            console.log(`[A11y Helper] 🧠 Cleared ${count} selections + rejections`);
             resolve(count);
           };
           countReq.onerror = () => resolve(0);
-        } catch (e) {
-          resolve(0);
-        }
+        } catch (e) { resolve(0); }
       });
     },
 
-    /**
-     * Render the recommendations card for the seat list.
-     * Returns HTML string. Empty if no recommendations.
-     */
+    // ── Render recommendations card ──
     renderRecommendations(recommendations, symbol) {
       if (!recommendations || recommendations.length === 0) return '';
-
       const cards = recommendations.map((rec, i) => {
         const s = rec.seat;
         const matchPct = rec.score;
         const reasonsHtml = rec.reasons.map(r => `<span class="tm-a11y-rec-reason">${r}</span>`).join('');
-        const rankLabel = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-
+        const rankLabel = `<span class="tm-a11y-rec-rank-num">${i + 1}</span>`;
+        const penaltyBadge = (rec.detailed && rec.detailed.rejectionPenalty > 2)
+          ? `<span class="tm-a11y-rec-penalty" title="Score reduced by ${rec.detailed.rejectionPenalty} pts from skipped similar seats"><span class="tm-a11y-icon tm-a11y-icon-scale"></span></span>` : '';
         return `
           <div class="tm-a11y-rec-card" data-seat-id="${s.id}" tabindex="0" role="button"
                aria-label="Recommended: ${s.section} ${s.row ? 'Row ' + s.row : ''} ${symbol}${s.price.toFixed(2)} — ${matchPct}% match">
@@ -4541,20 +4896,23 @@
               <div class="tm-a11y-rec-reasons">${reasonsHtml}</div>
             </div>
             <div class="tm-a11y-rec-right">
-              <div class="tm-a11y-rec-match">${matchPct}%</div>
+              <div class="tm-a11y-rec-match">${matchPct}% ${penaltyBadge}</div>
               <div class="tm-a11y-rec-price">${symbol}${s.price.toFixed(2)}</div>
             </div>
           </div>`;
       }).join('');
-
+      const firstRec = recommendations[0];
+      const engineInfo = firstRec?.detailed
+        ? `kNN (k=${firstRec.detailed.kUsed}${firstRec.detailed.rejectionPenalty > 0 ? ', rejection-aware' : ''})`
+        : 'kNN';
       return `
         <div class="tm-a11y-rec-panel" id="tmA11yRecPanel">
           <div class="tm-a11y-rec-header">
-            <span class="tm-a11y-rec-title">🧠 Recommended for You</span>
+            <span class="tm-a11y-rec-title"><span class="tm-a11y-icon tm-a11y-icon-brain"></span> Recommended for You</span>
             <button class="tm-a11y-rec-dismiss" id="tmA11yRecDismiss" aria-label="Dismiss recommendations" title="Hide recommendations">×</button>
           </div>
           <div class="tm-a11y-rec-cards">${cards}</div>
-          <div class="tm-a11y-rec-privacy">🔒 Based on your local history · Never sent anywhere</div>
+          <div class="tm-a11y-rec-privacy"><span class="tm-a11y-icon tm-a11y-icon-lock"></span> Based on your local history · ${engineInfo} · Never sent anywhere</div>
         </div>`;
     }
   };
@@ -5783,7 +6141,7 @@
 
     currentAdapter = detectPlatform();
 
-    console.log(`[A11y Helper] ████ Initialising v6.3 (${currentAdapter.name}) on:`, window.location.href);
+    console.log(`[A11y Helper] ████ Initialising v7.0 (${currentAdapter.name}) on:`, window.location.href);
 
     // Add platform class to body for platform-specific CSS
     document.body.setAttribute('data-tm-a11y-platform', currentAdapter.name);

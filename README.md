@@ -204,21 +204,42 @@ When visiting an event page, the extension asynchronously fetches venue accessib
 - No external API keys required (uses free public APIs)
 - Works across all three platforms (TM, Viagogo, StubHub)
 
-### 12. Cognitive Load Reduction — Recommendation Engine (Tier 2)
+### 12. Cognitive Load Reduction — Recommendation Engine v2 (Tier 2)
 
-After 3+ seat selections, the extension learns user preferences and recommends matching seats.
+After 3+ seat selections, the extension learns user preferences and recommends matching seats using a **k-Nearest Neighbours (kNN)** algorithm with sensory profile and venue awareness.
 
 **How it works:**
-1. Each "Select" button click records the seat to IndexedDB
-2. A preference profile is built: average price, preferred sections, typical row proximity
-3. Every available seat is scored 0–100 against the profile
-4. Top 3 matches shown at the top of the Seats tab with match% and reasoning
+1. Each "Select" / "❤️" / "Pin" action records the seat as a positive signal to IndexedDB
+2. Implicit negative signals are also tracked: dismissed recommendations (strong), skipped seats (medium), seats scrolled past without interaction after 3s (weak)
+3. Each seat is converted to a 7-dimensional feature vector: `[price, rowNumber, sectionHash, isResale, isVIP, isAisle, isAccessible]`
+4. Features are min-max normalised to prevent price (range 20–500) from dominating binary features
+5. Candidate seats are scored by weighted Euclidean distance to the k nearest positive selections
+6. A rejection penalty reduces scores for seats similar to previously-rejected ones
+7. Top 3 diverse recommendations shown with match% and contextual reasoning
 
-**Scoring formula:**
-- 50 (neutral base) + price match (±30) + section match (±25) + row proximity (±25) - avoid penalty (-15) + seller bonus (+5)
+**kNN scoring (replaces v1 linear formula):**
+- Extract features → normalise → compute distance to all positive examples → take k=5 nearest → inverse mean distance → scale to 0–100 → subtract rejection penalty (capped at 25 pts)
+- Handles multi-modal preferences (e.g. user who picks both cheap GA and expensive floor seats)
+
+**Sensory profile integration:**
+- Active sensory profile adjusts feature weights at scoring time
+- "Low Stimulation" → aisle access ×2.0, accessible ×1.5, price ×0.6
+- "Budget Mode" → price ×2.5, VIP ×0.3
+- Custom profiles derive weights from MCDA slider values
+
+**Venue metadata integration:**
+- Quiet space available → accessible seat weight +30%
+- Companion seating available → accessible seat weight +20%
+- Hearing loop available → section/view weight +10%
+
+**Negative signal tracking:**
+- `dismiss` (user explicitly dismisses recommendation) → strength 1.0
+- `skip` (user views seat card but takes no action) → strength 0.6
+- `scroll_past` (seat visible >3s via IntersectionObserver) → strength 0.3
+- Nearby rejections in feature space apply a distance-weighted penalty
 
 **Privacy:**
-- All data stored locally in IndexedDB
+- All data stored locally in IndexedDB (v2 schema: `seatSelections` + `seatRejections` stores)
 - Never sent to any server
-- Rolling window of max 50 records
-- Clear button in Tools tab
+- Rolling window of max 50 positive selections + 100 rejections
+- Clear button in Tools tab wipes both stores

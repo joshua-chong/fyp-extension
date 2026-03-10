@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Seat Finder — Ticket Accessibility Helper",
-  "version": "6.5.0",
-  "description": "Reduces cognitive load for neurodivergent users during ticket booking. AI-powered venue accessibility extraction, MCDA scoring, sensory profiles, recommendation engine, declutter mode, focus mode, pin-to-compare, and typography controls.",
+  "version": "7.0.0",
+  "description": "Reduces cognitive load for neurodivergent users during ticket booking. kNN-based recommendation engine with sensory profile and venue awareness, MCDA scoring, declutter mode, focus mode, pin-to-compare, and typography controls.",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://ticketmaster.com/*", "https://*.ticketmaster.com/*",
