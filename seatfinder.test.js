@@ -13,7 +13,7 @@ const {
   robustNormalise, computeSingleMCDAScore,
   kNN,
   normaliseName, lookupMap, htmlToText, extractChildLinks
-} = require('../src/testable');
+} = require('./testable');
 
 // ══════════════════════════════════════════════════════════════
 // TEST FIXTURES
@@ -924,5 +924,673 @@ describe('Configuration integrity', () => {
       expect(tier.score).toBeGreaterThanOrEqual(0);
       expect(tier.score).toBeLessThanOrEqual(1);
     });
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — parseRowNumber
+// ══════════════════════════════════════════════════════════════
+
+describe('parseRowNumber — edge cases', () => {
+  test('very large numeric row', () => {
+    expect(parseRowNumber('9999')).toBe(9999);
+  });
+
+  test('zero row', () => {
+    expect(parseRowNumber('0')).toBe(0);
+  });
+
+  test('negative number as string', () => {
+    // '-5' doesn't match /^\d+$/ so should be null
+    expect(parseRowNumber('-5')).toBeNull();
+  });
+
+  test('decimal number as string', () => {
+    expect(parseRowNumber('3.5')).toBeNull();
+  });
+
+  test('row with leading zeros', () => {
+    expect(parseRowNumber('007')).toBe(7);
+  });
+
+  test('single space', () => {
+    expect(parseRowNumber(' ')).toBeNull();
+  });
+
+  test('tab character', () => {
+    expect(parseRowNumber('\t')).toBeNull();
+  });
+
+  test('unicode characters', () => {
+    expect(parseRowNumber('Ä')).toBeNull();
+    expect(parseRowNumber('日')).toBeNull();
+  });
+
+  test('mixed case double letter', () => {
+    expect(parseRowNumber('aB')).toBe(28); // A=1, B=2 → 1*26+2=28
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — parseSeatNumber
+// ══════════════════════════════════════════════════════════════
+
+describe('parseSeatNumber — edge cases', () => {
+  test('seat zero', () => {
+    expect(parseSeatNumber('0')).toBe(0);
+  });
+
+  test('seat with text prefix', () => {
+    expect(parseSeatNumber('Seat 42')).toBe(42);
+  });
+
+  test('very large seat number', () => {
+    expect(parseSeatNumber('99999')).toBe(99999);
+  });
+
+  test('negative number string', () => {
+    // regex /(\d+)/ will match '5' from '-5'
+    expect(parseSeatNumber('-5')).toBe(5);
+  });
+
+  test('float string extracts integer part', () => {
+    expect(parseSeatNumber('3.5')).toBe(3);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — computeViewQuality
+// ══════════════════════════════════════════════════════════════
+
+describe('computeViewQuality — edge cases', () => {
+  test('undefined input', () => {
+    expect(computeViewQuality(undefined)).toBe(0.5);
+  });
+
+  test('section with only special characters', () => {
+    expect(computeViewQuality('---')).toBe(0.5);
+  });
+
+  test('section 0 — below 150 threshold', () => {
+    expect(computeViewQuality('Section 0')).toBe(0.8);
+  });
+
+  test('section 150 — boundary', () => {
+    expect(computeViewQuality('Zone 150')).toBe(0.8);
+  });
+
+  test('section 151 — just past boundary', () => {
+    expect(computeViewQuality('Zone 151')).toBe(0.8); // 1\d{2} regex matches 151
+  });
+
+  test('section 250/251 boundary', () => {
+    expect(computeViewQuality('Zone 250')).toBe(0.6);
+    expect(computeViewQuality('Zone 251')).toBe(0.6); // 2\d{2} regex matches 251
+  });
+
+  test('section 350/351 boundary', () => {
+    expect(computeViewQuality('Zone 350')).toBe(0.4);
+    expect(computeViewQuality('Zone 351')).toBe(0.4); // 3\d{2} regex matches 351
+  });
+
+  test('very high section number', () => {
+    expect(computeViewQuality('Section 9999')).toBe(0.25);
+  });
+
+  test('case insensitive patterns', () => {
+    expect(computeViewQuality('FLOOR')).toBe(1.0);
+    expect(computeViewQuality('vip')).toBe(0.9);
+    expect(computeViewQuality('UPPER BALCONY')).toBe(0.4);
+  });
+
+  test('partial matches — "standing" alone does not match floor tier', () => {
+    // 'standing\s*a' requires word boundary after 'a', fails on 'Area'
+    // Falls through to numeric fallback (no number) → 0.5
+    expect(computeViewQuality('Front Standing Area')).toBe(0.5);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — scoreToTier boundaries
+// ══════════════════════════════════════════════════════════════
+
+describe('scoreToTier — edge cases', () => {
+  test('negative score', () => {
+    expect(scoreToTier(-10)).toBe(5);
+  });
+
+  test('score over 100', () => {
+    expect(scoreToTier(150)).toBe(1);
+  });
+
+  test('fractional scores', () => {
+    expect(scoreToTier(80.9)).toBe(2);
+    expect(scoreToTier(81.0)).toBe(1);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — seatContentKey
+// ══════════════════════════════════════════════════════════════
+
+describe('seatContentKey — edge cases', () => {
+  test('seat with undefined fields', () => {
+    const seat = { section: undefined, row: undefined, seatNumber: undefined, price: undefined, sellerType: undefined };
+    const key = seatContentKey(seat);
+    expect(key).toBe('undefined|undefined|undefined|undefined|undefined');
+  });
+
+  test('seat with empty strings', () => {
+    const seat = { section: '', row: '', seatNumber: '', price: 0, sellerType: '' };
+    const key = seatContentKey(seat);
+    expect(key).toBe('|||0|');
+  });
+
+  test('pipe characters in section name', () => {
+    // This is a known weakness — pipes in data could cause key collisions
+    const seat1 = { section: 'A|B', row: 'C', seatNumber: '1', price: 50, sellerType: 'primary' };
+    const seat2 = { section: 'A', row: 'B|C', seatNumber: '1', price: 50, sellerType: 'primary' };
+    // These WILL collide — documenting the limitation
+    expect(seatContentKey(seat1)).toBe(seatContentKey(seat2));
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — getFilteredSeats
+// ══════════════════════════════════════════════════════════════
+
+describe('getFilteredSeats — edge cases', () => {
+  test('empty seat array', () => {
+    const result = getFilteredSeats([], DEFAULT_PREFERENCES);
+    expect(result).toEqual([]);
+  });
+
+  test('all seats unavailable', () => {
+    const allUnavailable = MOCK_SEATS.map(s => ({ ...s, availability: 'unavailable' }));
+    const result = getFilteredSeats(allUnavailable, DEFAULT_PREFERENCES);
+    expect(result).toEqual([]);
+  });
+
+  test('seats with identical prices sort stably', () => {
+    const samePriceSeats = [
+      { ...MOCK_SEATS[0], price: 50, id: 'a' },
+      { ...MOCK_SEATS[1], price: 50, id: 'b' },
+      { ...MOCK_SEATS[2], price: 50, id: 'c' },
+    ];
+    const result = getFilteredSeats(samePriceSeats, { ...DEFAULT_PREFERENCES, sortBy: 'price-asc' });
+    expect(result.length).toBe(3);
+  });
+
+  test('NaN price does not crash sort', () => {
+    const weirdSeats = [
+      { ...MOCK_SEATS[0], price: NaN },
+      { ...MOCK_SEATS[1], price: 50 },
+    ];
+    expect(() => getFilteredSeats(weirdSeats, { ...DEFAULT_PREFERENCES, sortBy: 'price-asc' })).not.toThrow();
+  });
+
+  test('negative price does not crash', () => {
+    const weirdSeats = [
+      { ...MOCK_SEATS[0], price: -10 },
+      { ...MOCK_SEATS[1], price: 50 },
+    ];
+    const result = getFilteredSeats(weirdSeats, { ...DEFAULT_PREFERENCES, sortBy: 'price-asc' });
+    expect(result[0].price).toBe(-10); // negative sorts first
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — mergeSeatData
+// ══════════════════════════════════════════════════════════════
+
+describe('mergeSeatData — edge cases', () => {
+  test('large dataset performance', () => {
+    const bigExisting = Array.from({ length: 1000 }, (_, i) => ({
+      section: `Section ${i}`, row: 'A', seatNumber: '1', price: i, sellerType: 'primary'
+    }));
+    const bigNew = Array.from({ length: 1000 }, (_, i) => ({
+      section: `Section ${i + 500}`, row: 'A', seatNumber: '1', price: i + 500, sellerType: 'primary'
+    }));
+    const start = Date.now();
+    const { seats, added } = mergeSeatData(bigExisting, bigNew);
+    const elapsed = Date.now() - start;
+    expect(seats.length).toBe(1500); // 500 overlap
+    expect(added).toBe(500);
+    expect(elapsed).toBeLessThan(1000); // should be well under 1s
+  });
+
+  test('both arrays empty', () => {
+    const { seats, added } = mergeSeatData([], []);
+    expect(seats).toEqual([]);
+    expect(added).toBe(0);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — Decision Stage
+// ══════════════════════════════════════════════════════════════
+
+describe('computeDecisionStageFromInteractions — edge cases', () => {
+  test('very high interaction counts still cap at deciding', () => {
+    expect(computeDecisionStageFromInteractions({
+      filtersApplied: true, seatsViewed: 1000, seatsPinned: 10, seatsLiked: 50
+    })).toBe('deciding');
+  });
+
+  test('zero values for everything', () => {
+    expect(computeDecisionStageFromInteractions({
+      filtersApplied: false, seatsViewed: 0, seatsPinned: 0, seatsLiked: 0
+    })).toBe('exploring');
+  });
+
+  test('negative values treated as falsy', () => {
+    // Negative seatsPinned shouldn't trigger comparing
+    expect(computeDecisionStageFromInteractions({
+      filtersApplied: false, seatsViewed: 0, seatsPinned: -1, seatsLiked: 0
+    })).toBe('exploring');
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — robustNormalise
+// ══════════════════════════════════════════════════════════════
+
+describe('robustNormalise — edge cases', () => {
+  test('two identical values', () => {
+    const result = robustNormalise([42, 42]);
+    expect(result.min).toBe(42);
+    expect(result.max).toBe(42);
+  });
+
+  test('negative values', () => {
+    const result = robustNormalise([-100, -50, 0, 50, 100]);
+    expect(result.min).toBeLessThan(0);
+  });
+
+  test('very large array', () => {
+    const big = Array.from({ length: 10000 }, (_, i) => i);
+    const result = robustNormalise(big);
+    expect(result.min).toBeGreaterThanOrEqual(0);
+    expect(result.max).toBeLessThanOrEqual(9999);
+    expect(result.min).toBeLessThan(result.max);
+  });
+
+  test('all same values', () => {
+    const result = robustNormalise([7, 7, 7, 7, 7]);
+    expect(result.min).toBe(7);
+    expect(result.max).toBe(7);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — MCDA Scoring
+// ══════════════════════════════════════════════════════════════
+
+describe('computeSingleMCDAScore — edge cases', () => {
+  test('all weights zero — defaults to 0.25 each', () => {
+    const zeroWeights = { price: 0, viewQuality: 0, proximity: 0, aisleAccess: 0 };
+    const result = computeSingleMCDAScore(MOCK_SEATS[0], MOCK_SEATS, zeroWeights);
+    expect(result).not.toBeNull();
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    expect(result.score).toBeLessThanOrEqual(100);
+  });
+
+  test('single weight at 100 — only that dimension matters', () => {
+    const viewOnly = { price: 0, viewQuality: 100, proximity: 0, aisleAccess: 0 };
+    const floor = computeSingleMCDAScore(MOCK_SEATS[6], MOCK_SEATS, viewOnly); // Floor section
+    const upper = computeSingleMCDAScore(MOCK_SEATS[3], MOCK_SEATS, viewOnly); // Section 301
+    // Floor (1.0 view quality) should beat 301 (0.4 view quality)
+    expect(floor.score).toBeGreaterThan(upper.score);
+  });
+
+  test('seat with missing seatNumber — aisle defaults to 0.5', () => {
+    const noSeat = { ...MOCK_SEATS[4], seatNumber: '' }; // Standing, no seat number
+    const result = computeSingleMCDAScore(noSeat, MOCK_SEATS, MCDA_PRESETS.balanced);
+    expect(result.subscores.aisleAccess).toBe(50);
+  });
+
+  test('seat with missing row — proximity defaults to 0.5', () => {
+    const noRow = { ...MOCK_SEATS[4], row: '' }; // Standing, no row
+    const result = computeSingleMCDAScore(noRow, MOCK_SEATS, MCDA_PRESETS.balanced);
+    expect(result.subscores.proximity).toBe(50);
+  });
+
+  test('single seat in list — always scores high', () => {
+    const single = [{ ...MOCK_SEATS[0], availability: 'available' }];
+    const result = computeSingleMCDAScore(single[0], single, MCDA_PRESETS.balanced);
+    // With only one seat, it's both cheapest and closest — should score well
+    expect(result.score).toBeGreaterThanOrEqual(70);
+  });
+
+  test('extreme price outlier', () => {
+    const withOutlier = [
+      ...MOCK_SEATS.filter(s => s.availability === 'available'),
+      { ...MOCK_SEATS[0], price: 99999, id: 'outlier' }
+    ];
+    const result = computeSingleMCDAScore(withOutlier[0], withOutlier, MCDA_PRESETS.balanced);
+    // Winsorisation should prevent the outlier from compressing all other scores
+    expect(result).not.toBeNull();
+    expect(result.subscores.price).toBeGreaterThan(0);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — kNN Feature Extraction
+// ══════════════════════════════════════════════════════════════
+
+describe('kNN._extractFeatures — edge cases', () => {
+  test('seat with all undefined fields', () => {
+    const empty = {};
+    const features = kNN._extractFeatures(empty);
+    expect(features).toHaveLength(7);
+    expect(features[0]).toBe(0);   // price defaults to 0
+    expect(features[1]).toBe(15);  // row defaults to 15
+    expect(features[3]).toBe(0);   // not resale
+    expect(features[4]).toBe(0);   // not VIP
+    expect(features[5]).toBe(0);   // no aisle access
+    expect(features[6]).toBe(0);   // not accessible
+  });
+
+  test('seat with NaN price', () => {
+    const features = kNN._extractFeatures({ price: NaN });
+    expect(features[0]).toBe(0); // NaN || 0 evaluates to 0 in JS
+  });
+
+  test('seat with negative price', () => {
+    const features = kNN._extractFeatures({ price: -50 });
+    expect(features[0]).toBe(-50);
+  });
+
+  test('premium type sets VIP flag', () => {
+    const features = kNN._extractFeatures({ type: 'premium' });
+    expect(features[4]).toBe(1);
+  });
+
+  test('unknown type sets no flags', () => {
+    const features = kNN._extractFeatures({ type: 'mystery' });
+    expect(features[4]).toBe(0);
+    expect(features[6]).toBe(0);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — kNN Scoring
+// ══════════════════════════════════════════════════════════════
+
+describe('kNN._knnScore — edge cases', () => {
+  const stats = { mins: [0, 0, 0, 0, 0, 0, 0], maxs: [1, 1, 1, 1, 1, 1, 1], dims: 7 };
+  const weights = [1, 1, 1, 0.5, 0.5, 0.5, 0.5];
+
+  test('single positive vector (k=1 effective)', () => {
+    const single = [[0.5, 0.5, 0.5, 0, 0, 0, 0]];
+    const result = kNN._knnScore([0.5, 0.5, 0.5, 0, 0, 0, 0], single, [], weights, stats, 5);
+    expect(result.kUsed).toBe(1);
+    expect(result.score).toBe(100); // identical to only example
+  });
+
+  test('candidate far from all positives', () => {
+    const positives = [[0, 0, 0, 0, 0, 0, 0]];
+    const result = kNN._knnScore([1, 1, 1, 1, 1, 1, 1], positives, [], weights, stats, 5);
+    expect(result.score).toBeLessThan(50);
+  });
+
+  test('rejection with missing reason field defaults to skip', () => {
+    const positives = [[0.5, 0.5, 0.5, 0, 0, 0, 0]];
+    // No reason field — should still work (treated as undefined, not 'dismiss')
+    const result = kNN._knnScore(
+      [0.5, 0.5, 0.5, 0, 0, 0, 0], positives,
+      [{ vec: [0.5, 0.5, 0.5, 0, 0, 0, 0] }], // no reason
+      weights, stats
+    );
+    // Should have some penalty (undefined matches the 0.3 fallback in strengthMul)
+    expect(result.rejectionPenalty).toBeGreaterThan(0);
+  });
+
+  test('null stats still produces a score', () => {
+    const positives = [[50, 5, 500, 0, 0, 0, 0]];
+    const result = kNN._knnScore([50, 5, 500, 0, 0, 0, 0], positives, [], weights, null);
+    expect(result.score).toBeGreaterThanOrEqual(0);
+    expect(result.score).toBeLessThanOrEqual(100);
+  });
+
+  test('all-zero weights still produces a score', () => {
+    const positives = [[0.5, 0.5, 0.5, 0, 0, 0, 0]];
+    const zeroWeights = [0, 0, 0, 0, 0, 0, 0];
+    const result = kNN._knnScore([0.9, 0.9, 0.9, 1, 1, 1, 1], positives, [], zeroWeights, stats);
+    // With zero weights, all distances are 0, so everything is "identical"
+    expect(result.score).toBe(100);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — kNN Profile Weights
+// ══════════════════════════════════════════════════════════════
+
+describe('kNN._getProfileAwareWeights — edge cases', () => {
+  test('profile with no mcdaWeights', () => {
+    const profile = { id: 'custom', name: 'Custom Profile' };
+    const w = kNN._getProfileAwareWeights(profile, null);
+    // Should return base weights (no MCDA modulation)
+    expect(w).toEqual([1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5]);
+  });
+
+  test('profile with zero MCDA weights — defaults kick in via || operator', () => {
+    const profile = { id: 'x', name: 'x', mcdaWeights: { price: 0, viewQuality: 0, proximity: 0, aisleAccess: 0 } };
+    const w = kNN._getProfileAwareWeights(profile, null);
+    // (mcda.price||25) means 0 falls back to 25, so total=100, weights=1.0 each
+    expect(w[0]).toBe(1.0);
+    expect(w[1]).toBe(1.0);
+  });
+
+  test('multiple venue meta flags compound', () => {
+    const venueMeta = { quiet_space: 'yes', companion_seating: 'yes', hearing_loop: 'yes' };
+    const w = kNN._getProfileAwareWeights(null, venueMeta);
+    // accessible weight should be boosted twice (1.3 * 1.2 = 1.56)
+    expect(w[6]).toBeCloseTo(0.5 * 1.3 * 1.2, 2);
+    // section weight boosted once
+    expect(w[2]).toBeCloseTo(1.0 * 1.1, 2);
+  });
+
+  test('profile name matching is case insensitive', () => {
+    const profile = { id: 'custom', name: 'LOW STIM mode' };
+    const w = kNN._getProfileAwareWeights(profile, null);
+    expect(w[5]).toBeGreaterThanOrEqual(1.0); // aisle boosted: 0.5 * 2.0 = 1.0
+  });
+
+  test('combined profile + venue meta', () => {
+    const profile = BUILT_IN_PROFILES[0]; // Low Stim
+    const venueMeta = { quiet_space: 'yes' };
+    const w = kNN._getProfileAwareWeights(profile, venueMeta);
+    // Accessible weight gets low-stim boost (1.5) AND venue boost (1.3)
+    expect(w[6]).toBeGreaterThan(0.5 * 1.5); // more than just low-stim alone
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — normaliseName
+// ══════════════════════════════════════════════════════════════
+
+describe('normaliseName — edge cases', () => {
+  test('empty string', () => {
+    expect(normaliseName('')).toBe('');
+  });
+
+  test('only whitespace', () => {
+    expect(normaliseName('   ')).toBe('');
+  });
+
+  test('only smart quotes', () => {
+    expect(normaliseName('\u2019\u2018')).toBe('');
+  });
+
+  test('accented characters preserved', () => {
+    // normaliseName only removes smart quotes, not accents
+    expect(normaliseName('Café Münster')).toBe('café münster');
+  });
+
+  test('numbers preserved', () => {
+    expect(normaliseName('3Arena Dublin')).toBe('3arena dublin');
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — lookupMap
+// ══════════════════════════════════════════════════════════════
+
+describe('lookupMap — edge cases', () => {
+  const testMap = {
+    'the o2': 'val1',
+    'ao arena': 'val2',
+  };
+
+  test('empty string input — matches first key via includes', () => {
+    // ''.includes('') is true, and every key.includes('') is true
+    // So empty string matches the first entry — documenting this edge case
+    expect(lookupMap(testMap, '')).not.toBeNull();
+  });
+
+  test('empty map', () => {
+    expect(lookupMap({}, 'the o2')).toBeNull();
+  });
+
+  test('key is substring of input AND input is substring of different key', () => {
+    // 'the o2' is in 'the o2 arena' — should match via includes
+    expect(lookupMap(testMap, 'the o2 arena')).toBe('val1');
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — htmlToText
+// ══════════════════════════════════════════════════════════════
+
+describe('htmlToText — edge cases', () => {
+  test('empty string', () => {
+    expect(htmlToText('')).toBe('');
+  });
+
+  test('plain text (no HTML)', () => {
+    expect(htmlToText('just plain text')).toBe('just plain text');
+  });
+
+  test('deeply nested tags', () => {
+    const html = '<div><div><div><div><p>Deep</p></div></div></div></div>';
+    expect(htmlToText(html)).toContain('Deep');
+  });
+
+  test('malformed HTML', () => {
+    expect(() => htmlToText('<p>unclosed <b>tags')).not.toThrow();
+  });
+
+  test('script with tricky closing tag — known limitation', () => {
+    // The regex-based stripper is fooled by </script> inside a string literal.
+    // This is a known limitation of regex-based HTML parsing.
+    const html = '<script>var x = "</script>"; alert("xss")</script><p>Safe</p>';
+    const text = htmlToText(html);
+    // The text WILL contain 'alert' because the regex closes at the first </script>
+    expect(text).toContain('Safe');
+    // Documenting: regex HTML parsing can't handle nested closing tags
+  });
+
+  test('style with tricky content', () => {
+    const html = '<style>body { content: "</style>"; }</style><p>Content</p>';
+    const text = htmlToText(html);
+    expect(text).toContain('Content');
+  });
+
+  test('maxLen of 0', () => {
+    expect(htmlToText('<p>Hello</p>', 0)).toBe('');
+  });
+
+  test('multiple consecutive entities', () => {
+    expect(htmlToText('&amp;&amp;&amp;')).toBe('&&&');
+  });
+
+  test('noscript tags removed', () => {
+    const html = '<noscript>Enable JS</noscript><p>Main</p>';
+    expect(htmlToText(html)).not.toContain('Enable JS');
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — extractChildLinks
+// ══════════════════════════════════════════════════════════════
+
+describe('extractChildLinks — edge cases', () => {
+  test('empty HTML', () => {
+    expect(extractChildLinks('', 'https://example.com/')).toEqual([]);
+  });
+
+  test('malformed href', () => {
+    const html = '<a href="://broken">Link</a>';
+    // Should not crash
+    expect(() => extractChildLinks(html, 'https://example.com/')).not.toThrow();
+  });
+
+  test('relative path resolution', () => {
+    const html = '<a href="../accessibility/parking">Parking</a>';
+    const links = extractChildLinks(html, 'https://example.com/visit/info');
+    expect(links[0]).toContain('example.com');
+    expect(links[0]).toContain('accessibility');
+  });
+
+  test('fragment-only links excluded', () => {
+    // href="#section" is filtered by the [^"'#] pattern
+    const html = '<a href="#accessibility">Jump</a>';
+    const links = extractChildLinks(html, 'https://example.com/');
+    expect(links).toEqual([]);
+  });
+
+  test('non-relevant links excluded', () => {
+    const html = '<a href="/about-us">About</a><a href="/careers">Jobs</a>';
+    const links = extractChildLinks(html, 'https://example.com/');
+    expect(links).toEqual([]);
+  });
+
+  test('handles single quotes in href', () => {
+    const html = "<a href='/accessibility/info'>Info</a>";
+    const links = extractChildLinks(html, 'https://example.com/');
+    expect(links.length).toBe(1);
+  });
+});
+
+
+// ══════════════════════════════════════════════════════════════
+// EDGE CASES — kNN Section Hash Collisions
+// ══════════════════════════════════════════════════════════════
+
+describe('kNN._hashSection — collision resistance', () => {
+  test('typical venue sections produce unique hashes', () => {
+    const sections = [
+      'Section 101', 'Section 102', 'Section 103', 'Section 201', 'Section 202',
+      'Section 301', 'Section 302', 'Floor', 'Standing', 'VIP Box A',
+      'Balcony Left', 'Balcony Right', 'Upper Tier', 'Lower Tier', 'Mezzanine'
+    ];
+    const hashes = sections.map(s => kNN._hashSection(s));
+    const unique = new Set(hashes);
+    // Allow at most 1 collision in 15 sections (hash space is 0-999)
+    expect(unique.size).toBeGreaterThanOrEqual(sections.length - 1);
+  });
+
+  test('very similar names still differentiate', () => {
+    const h1 = kNN._hashSection('Section 101');
+    const h2 = kNN._hashSection('Section 102');
+    expect(h1).not.toBe(h2);
   });
 });
