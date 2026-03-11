@@ -1989,7 +1989,7 @@ g.tm-a11y-heat-t5 { opacity: 0.35 !important; }
 }
 
 .tm-a11y-venue-row-icon {
-  font-size: 14px;
+  font-size: 15px;
   width: 18px;
   text-align: center;
   flex-shrink: 0;
@@ -2001,7 +2001,7 @@ g.tm-a11y-heat-t5 { opacity: 0.35 !important; }
 }
 
 .tm-a11y-venue-row-label {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--tm-a11y-panel-text, #e4e6eb);
   white-space: nowrap;
@@ -2014,7 +2014,7 @@ g.tm-a11y-heat-t5 { opacity: 0.35 !important; }
 }
 
 .tm-a11y-venue-row-status {
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 600;
   padding: 2px 6px;
   border-radius: 3px;
@@ -2071,13 +2071,13 @@ g.tm-a11y-heat-t5 { opacity: 0.35 !important; }
 .tm-a11y-venue-source {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--tm-a11y-panel-text-tertiary, #555a6b);
   margin-bottom: 8px;
 }
 
 .tm-a11y-venue-disclaimer {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--tm-a11y-panel-text-tertiary, #555a6b);
   line-height: 1.5;
   font-style: italic;
