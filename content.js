@@ -496,12 +496,30 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // SECURITY — HTML sanitisation
+  // ══════════════════════════════════════════════════════════════
+
+  /**
+   * Escape HTML special characters to prevent XSS when inserting
+   * user-controlled strings into innerHTML template literals.
+   */
+  function esc(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // ICON HELPER — generates <img> tags for accessible-icons/
   // ══════════════════════════════════════════════════════════════
 
   function iconImg(name, size = 30, alt = '') {
     const src = extensionBaseUrl ? extensionBaseUrl + `accessible-icons/${name}.png` : `accessible-icons/${name}.png`;
-    return `<img src="${src}" class="tm-a11y-icon-img" alt="${alt}" width="${size}" height="${size}">`;
+    return `<img src="${src}" class="tm-a11y-icon-img" alt="${esc(alt)}" width="${size}" height="${size}">`;
   }
 
   // ══════════════════════════════════════════════════════════════
@@ -1364,7 +1382,7 @@
         <div class="tm-a11y-venue-tab-content">
           <div class="tm-a11y-venue-header">
             <div class="tm-a11y-venue-name">${venueName || 'Unknown venue'}</div>
-            <div class="tm-a11y-venue-event">${eventName}</div>
+            <div class="tm-a11y-venue-event">${esc(eventName)}</div>
           </div>
           <div class="tm-a11y-venue-loading">
             <div class="tm-a11y-venue-loading-icon">${iconImg("key", 30, "API Key")}</div>
@@ -1383,7 +1401,7 @@
         <div class="tm-a11y-venue-tab-content">
           <div class="tm-a11y-venue-header">
             <div class="tm-a11y-venue-name">${venueName || 'Unknown venue'}</div>
-            <div class="tm-a11y-venue-event">${eventName}</div>
+            <div class="tm-a11y-venue-event">${esc(eventName)}</div>
           </div>
           <div class="tm-a11y-venue-loading">
             <div class="tm-a11y-venue-loading-icon">${iconImg("warning", 30, "Warning")}</div>
@@ -1412,7 +1430,7 @@
     const featureRows = features.map(f => {
       const val = meta[f.key]; // "yes", "no", or "not_specified"
       const iconUrl = extensionBaseUrl ? extensionBaseUrl + f.iconFile : f.iconFile;
-      const iconImg = `<img src="${iconUrl}" class="tm-a11y-venue-icon-img" alt="${f.label}" width="30" height="30">`;
+      const iconImg = `<img src="${iconUrl}" class="tm-a11y-venue-icon-img" alt="${esc(f.label)}" width="30" height="30">`;
 
       if (val === 'yes') {
         return `
@@ -1453,9 +1471,16 @@
     // ── Source info ──
     const sourceLabel = {
       'ai_extraction': 'AI extraction from venue website',
+      'ai_discovery': 'AI-discovered venue page',
+      'google_extraction': 'Google search result',
+      'ai_inference': 'AI knowledge (no venue page found)',
       'ai_no_page': 'AI analysis (no accessibility page found)',
       'cached': 'Cached data'
     }[meta.data_source] || meta.data_source || 'Unknown';
+
+    const confidenceNote = meta.data_source === 'ai_inference'
+      ? `<div class="tm-a11y-venue-confidence-note">This data is based on AI knowledge, not the venue's official website. Confidence: ${meta.confidence || 'low'}. Verify directly with the venue.</div>`
+      : '';
 
     const lastUpdated = meta.last_updated
       ? new Date(meta.last_updated).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -1469,7 +1494,7 @@
       <div class="tm-a11y-venue-tab-content">
         <div class="tm-a11y-venue-header">
           <div class="tm-a11y-venue-name">${venueName || 'Unknown venue'}</div>
-          <div class="tm-a11y-venue-event">${eventName}</div>
+          <div class="tm-a11y-venue-event">${esc(eventName)}</div>
         </div>
 
         <div class="tm-a11y-venue-section">
@@ -1486,6 +1511,7 @@
           </div>
           ${sourceUrlHTML}
           <p class="tm-a11y-venue-disclaimer">This accessibility summary is AI-generated from the venue's published information. Always verify directly with the venue.</p>
+          ${confidenceNote}
           <button class="tm-a11y-toggle-btn" id="tmA11yVenueRefresh" style="margin-top:8px">
             <span>Refresh Data</span>
           </button>
@@ -1555,12 +1581,12 @@
             <span class="tm-a11y-panel-logo"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg></span>
             <div>
               <div class="tm-a11y-panel-title">Seat Finder</div>
-              <div class="tm-a11y-panel-subtitle">${eventMeta.eventName || 'Detecting event...'}</div>
+              <div class="tm-a11y-panel-subtitle">${esc(eventMeta.eventName || 'Detecting event...')}</div>
             </div>
           </div>
           <div class="tm-a11y-header-actions">
             ${_authUser ? `
-              <button class="tm-a11y-header-avatar" id="tmA11yHeaderAvatar" title="Logged in as ${_authUser.displayName}" aria-label="Account: ${_authUser.displayName}">
+              <button class="tm-a11y-header-avatar" id="tmA11yHeaderAvatar" title="Logged in as ${esc(_authUser.displayName)}" aria-label="Account: ${esc(_authUser.displayName)}">
                 ${(_authUser.displayName || 'U')[0].toUpperCase()}
               </button>
             ` : `
@@ -1792,14 +1818,103 @@
               </div>
             </div>
 
-            <!-- ═══ SECTION: DISPLAY ═══ -->
+            <!-- ═══ SECTION: MAP VISUALISATION ═══ -->
             <div class="tm-a11y-filter-section">
               <div class="tm-a11y-filter-section-header">
-                ${iconImg("palette", 30, "Display")}
-                <span class="tm-a11y-filter-section-title">Display</span>
+                ${iconImg("venue", 30, "Map")}
+                <span class="tm-a11y-filter-section-title">Map Visualisation</span>
+              </div>
+              <div class="tm-a11y-toolcard-grid">
+                <button class="tm-a11y-toolcard-toggle ${currentPreferences.focusModeEnabled ? 'tm-a11y-toolcard-toggle-on' : ''}" 
+                        id="tmA11yFocusModeToggle" aria-pressed="${currentPreferences.focusModeEnabled}"
+                        title="Highlight affordable seats and dim expensive ones">
+                  <svg class="tm-a11y-toolcard-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                  <span class="tm-a11y-toolcard-toggle-label">Focus Mode</span>
+                  <span class="tm-a11y-toolcard-toggle-desc">Dim over-budget seats</span>
+                </button>
+                <button class="tm-a11y-toolcard-toggle ${currentPreferences.mcdaEnabled ? 'tm-a11y-toolcard-toggle-on' : ''}" 
+                        id="tmA11yMCDAToggle" aria-pressed="${currentPreferences.mcdaEnabled}"
+                        title="Score and colour-code all seats using weighted criteria">
+                  <svg class="tm-a11y-toolcard-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+                  <span class="tm-a11y-toolcard-toggle-label">Heatmap</span>
+                  <span class="tm-a11y-toolcard-toggle-desc">Colour-code by score</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ═══ TAB: VENUE ═══ -->
+        <div class="tm-a11y-tab-panel ${currentPanelTab === 'venue' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabVenue" role="tabpanel">
+          ${renderVenueTab()}
+        </div>
+
+        <!-- ═══ TAB: TOOLS ═══ -->
+        <div class="tm-a11y-tab-panel ${currentPanelTab === 'tools' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabTools" role="tabpanel">
+          <div class="tm-a11y-panel-tools">
+            
+            <!-- SENSORY PROFILES — expanded with cards + import/export -->
+            <div class="tm-a11y-toolcard">
+              <div class="tm-a11y-toolcard-header">
+                ${iconImg("brain", 30, "Profile")}
+                <div class="tm-a11y-toolcard-title">Sensory Profiles</div>
+              </div>
+              <p class="tm-a11y-toolcard-desc">Profiles bundle all settings (colour scheme, typography, toggles) into one-click presets. Select a profile to instantly apply all its settings.</p>
+              
+              <!-- Profile cards -->
+              <div class="tm-a11y-profile-cards">
+                ${getAllProfiles().map(p => {
+                  const isActive = activeProfileId === p.id;
+                  const tags = [];
+                  if (p.settings?.colourScheme && p.settings.colourScheme !== 'default') tags.push(esc(COLOUR_SCHEMES[p.settings.colourScheme]?.label || p.settings.colourScheme));
+                  if (p.settings?.fontFamily && p.settings.fontFamily !== 'default') tags.push(esc(p.settings.fontFamily));
+                  if (p.settings?.fontSize) tags.push(p.settings.fontSize + 'px');
+                  if (p.settings?.declutterEnabled) tags.push('Declutter');
+                  if (p.settings?.animationFreezeEnabled) tags.push('Freeze');
+                  if (p.settings?.focusModeEnabled) tags.push('Focus');
+                  if (p.mcdaWeights) {
+                    const top = Object.entries(p.mcdaWeights).sort((a,b) => b[1] - a[1])[0];
+                    if (top && top[1] > 30) tags.push('MCDA: ' + top[0] + ' ' + top[1] + '%');
+                  }
+                  return `
+                  <div class="tm-a11y-profile-card ${isActive ? 'tm-a11y-profile-card-active' : ''}">
+                    <div class="tm-a11y-profile-card-top">
+                      <div>
+                        <div class="tm-a11y-profile-card-name">${esc(p.name)}</div>
+                        <div class="tm-a11y-profile-card-desc">${esc(p.description || '')}</div>
+                      </div>
+                      ${p.builtIn ? '<span class="tm-a11y-profile-badge">Built-in</span>' : '<span class="tm-a11y-profile-badge tm-a11y-profile-badge-custom">Custom</span>'}
+                    </div>
+                    <div class="tm-a11y-profile-card-tags">${tags.map(t => `<span class="tm-a11y-profile-tag">${t}</span>`).join('')}</div>
+                    <div class="tm-a11y-profile-card-actions">
+                      <button class="tm-a11y-toggle-btn ${isActive ? 'tm-a11y-toggle-active' : ''}" data-profile-apply="${p.id}">
+                        <span>${isActive ? 'Active' : 'Apply'}</span>
+                      </button>
+                      ${!p.builtIn ? `<button class="tm-a11y-toggle-btn" data-profile-delete="${p.id}" style="padding:5px 8px"><span>Delete</span></button>` : ''}
+                    </div>
+                  </div>`;
+                }).join('')}
               </div>
 
-              <!-- Colour scheme — with swatch preview -->
+              <!-- Import / Export -->
+              <div class="tm-a11y-profile-io">
+                <button class="tm-a11y-toggle-btn" id="tmA11yProfileExport" title="Export all custom profiles as JSON">
+                  <span>Export Profiles</span>
+                </button>
+                <button class="tm-a11y-toggle-btn" id="tmA11yProfileImport" title="Import profiles from a JSON file">
+                  <span>Import Profiles</span>
+                </button>
+                <input type="file" id="tmA11yProfileFileInput" accept=".json" style="display:none" />
+              </div>
+            </div>
+
+            <!-- DISPLAY -->
+            <div class="tm-a11y-toolcard">
+              <div class="tm-a11y-toolcard-header">
+                ${iconImg("palette", 30, "Display")}
+                <div class="tm-a11y-toolcard-title">Display</div>
+              </div>
               <div class="tm-a11y-filter-group">
                 <label class="tm-a11y-filter-label" for="tmA11yColourScheme">Colour Scheme</label>
                 <select id="tmA11yColourScheme" class="tm-a11y-select" aria-label="Colour scheme">
@@ -1814,14 +1929,12 @@
               </div>
             </div>
 
-            <!-- ═══ SECTION: TYPOGRAPHY ═══ -->
-            <div class="tm-a11y-filter-section">
-              <div class="tm-a11y-filter-section-header">
+            <!-- TYPOGRAPHY -->
+            <div class="tm-a11y-toolcard">
+              <div class="tm-a11y-toolcard-header">
                 ${iconImg("typography", 30, "Typography")}
-                <span class="tm-a11y-filter-section-title">Typography</span>
+                <div class="tm-a11y-toolcard-title">Typography</div>
               </div>
-
-              <!-- Typeface with live preview and categorised dropdown -->
               <div class="tm-a11y-filter-group">
                 <label class="tm-a11y-filter-label" for="tmA11yFontFamily">Typeface</label>
                 <select id="tmA11yFontFamily" class="tm-a11y-select tm-a11y-font-select" aria-label="Font family">
@@ -1838,8 +1951,6 @@
                   <span class="tm-a11y-font-preview-numbers">Section 114 · Row G · £84.50</span>
                 </div>
               </div>
-
-              <!-- Font Size + Line Spacing — side by side -->
               <div class="tm-a11y-filter-row">
                 <div class="tm-a11y-filter-group tm-a11y-filter-half">
                   <label class="tm-a11y-filter-label">
@@ -1862,31 +1973,19 @@
               </div>
             </div>
 
-          </div>
-        </div>
-
-        <!-- ═══ TAB: VENUE ═══ -->
-        <div class="tm-a11y-tab-panel ${currentPanelTab === 'venue' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabVenue" role="tabpanel">
-          ${renderVenueTab()}
-        </div>
-
-        <!-- ═══ TAB: TOOLS ═══ -->
-        <div class="tm-a11y-tab-panel ${currentPanelTab === 'tools' ? '' : 'tm-a11y-tab-hidden'}" id="tmA11yTabTools" role="tabpanel">
-          <div class="tm-a11y-panel-tools">
-            
-            <!-- PROFILE SELECTOR -->
+            <!-- SAVE CURRENT SETTINGS AS PROFILE -->
             <div class="tm-a11y-toolcard">
               <div class="tm-a11y-toolcard-header">
-                ${iconImg("brain", 30, "Profile")}
-                <div class="tm-a11y-toolcard-title">Sensory Profile</div>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                <div class="tm-a11y-toolcard-title">Save as Profile</div>
               </div>
-              <p class="tm-a11y-toolcard-desc">Apply a preset or custom profile to configure all settings at once.</p>
-              <select id="tmA11yProfileSelect" class="tm-a11y-select" aria-label="Sensory profile">
-                <option value="" ${!activeProfileId ? 'selected' : ''}>No Profile (Manual)</option>
-                ${getAllProfiles().map(p => 
-                  `<option value="${p.id}" ${activeProfileId === p.id ? 'selected' : ''}>${p.builtIn ? '★ ' : ''}${p.name}</option>`
-                ).join('')}
-              </select>
+              <p class="tm-a11y-toolcard-desc">Capture your current settings (colour scheme, font, toggles, MCDA weights) as a reusable custom profile.</p>
+              <div class="tm-a11y-filter-group" style="margin-bottom:8px">
+                <input type="text" id="tmA11yNewProfileName" class="tm-a11y-input" placeholder="Profile name (e.g. My Concert Setup)" aria-label="New profile name" />
+              </div>
+              <button class="tm-a11y-toggle-btn tm-a11y-toggle-active" id="tmA11ySaveProfileBtn">
+                <span>Save Current Settings</span>
+              </button>
             </div>
 
             <!-- ACCESSIBILITY TOGGLES -->
@@ -1909,30 +2008,6 @@
                   <svg class="tm-a11y-toolcard-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="4" height="16" x="6" y="4"/><rect width="4" height="16" x="14" y="4"/></svg>
                   <span class="tm-a11y-toolcard-toggle-label">Freeze Motion</span>
                   <span class="tm-a11y-toolcard-toggle-desc">Stop all animations</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- MAP VISUALISATION -->
-            <div class="tm-a11y-toolcard">
-              <div class="tm-a11y-toolcard-header">
-                ${iconImg("venue", 30, "Map")}
-                <div class="tm-a11y-toolcard-title">Map Visualisation</div>
-              </div>
-              <div class="tm-a11y-toolcard-grid">
-                <button class="tm-a11y-toolcard-toggle ${currentPreferences.focusModeEnabled ? 'tm-a11y-toolcard-toggle-on' : ''}" 
-                        id="tmA11yFocusModeToggle" aria-pressed="${currentPreferences.focusModeEnabled}"
-                        title="Highlight affordable seats and dim expensive ones">
-                  <svg class="tm-a11y-toolcard-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-                  <span class="tm-a11y-toolcard-toggle-label">Focus Mode</span>
-                  <span class="tm-a11y-toolcard-toggle-desc">Dim over-budget seats</span>
-                </button>
-                <button class="tm-a11y-toolcard-toggle ${currentPreferences.mcdaEnabled ? 'tm-a11y-toolcard-toggle-on' : ''}" 
-                        id="tmA11yMCDAToggle" aria-pressed="${currentPreferences.mcdaEnabled}"
-                        title="Score and colour-code all seats using weighted criteria">
-                  <svg class="tm-a11y-toolcard-toggle-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
-                  <span class="tm-a11y-toolcard-toggle-label">Heatmap</span>
-                  <span class="tm-a11y-toolcard-toggle-desc">Colour-code by score</span>
                 </button>
               </div>
             </div>
@@ -2024,11 +2099,11 @@
                 ${_journalFormVisible ? `
                 <div class="tm-a11y-journal-form">
                   <div class="tm-a11y-filter-group">
-                    <input type="text" id="tmA11yJournalEvent" class="tm-a11y-input" placeholder="Event / Artist *" aria-label="Event name" value="${eventMeta.eventName || ''}" />
+                    <input type="text" id="tmA11yJournalEvent" class="tm-a11y-input" placeholder="Event / Artist *" aria-label="Event name" value="${esc(eventMeta.eventName || '')}" />
                   </div>
                   <div class="tm-a11y-filter-row">
                     <div class="tm-a11y-filter-group tm-a11y-filter-half">
-                      <input type="text" id="tmA11yJournalVenue" class="tm-a11y-input" placeholder="Venue" aria-label="Venue" value="${eventMeta.venue || ''}" />
+                      <input type="text" id="tmA11yJournalVenue" class="tm-a11y-input" placeholder="Venue" aria-label="Venue" value="${esc(eventMeta.venue || '')}" />
                     </div>
                     <div class="tm-a11y-filter-group tm-a11y-filter-half">
                       <input type="text" id="tmA11yJournalSection" class="tm-a11y-input" placeholder="Section / Seat" aria-label="Section" />
@@ -2096,8 +2171,8 @@
                         </div>
                         ` : ''}
                         <div class="tm-a11y-jcard-info">
-                          <div class="tm-a11y-jcard-event">${e.eventName || 'Untitled'}</div>
-                          ${e.venue ? `<div class="tm-a11y-jcard-venue">${e.venue}${e.section ? ' · ' + e.section : ''}</div>` : ''}
+                          <div class="tm-a11y-jcard-event">${esc(e.eventName || 'Untitled')}</div>
+                          ${e.venue ? `<div class="tm-a11y-jcard-venue">${esc(e.venue)}${e.section ? ' · ' + esc(e.section) : ''}</div>` : ''}
                         </div>
                       </div>
 
@@ -2126,7 +2201,7 @@
                       </div>
                       ` : ''}
 
-                      ${e.notes ? `<div class="tm-a11y-jcard-notes">${e.notes}</div>` : ''}
+                      ${e.notes ? `<div class="tm-a11y-jcard-notes">${esc(e.notes)}</div>` : ''}
 
                       <div class="tm-a11y-jcard-actions">
                         <button class="tm-a11y-journal-edit-btn" data-entry-id="${e.id}">
@@ -2148,8 +2223,8 @@
                 <div class="tm-a11y-account-banner">
                   <div class="tm-a11y-account-avatar">${(_authUser.displayName || 'U')[0].toUpperCase()}</div>
                   <div class="tm-a11y-account-info">
-                    <span class="tm-a11y-account-name">${_authUser.displayName}</span>
-                    <span class="tm-a11y-account-email">${_authUser.email}</span>
+                    <span class="tm-a11y-account-name">${esc(_authUser.displayName)}</span>
+                    <span class="tm-a11y-account-email">${esc(_authUser.email)}</span>
                   </div>
                   <button class="tm-a11y-toggle-btn" id="tmA11yLogoutBtn" style="flex-shrink:0;padding:5px 10px"><span>Log out</span></button>
                 </div>
@@ -2199,12 +2274,12 @@
           <div class="tm-a11y-pinned-cards">
             <div class="tm-a11y-pinned-card ${inBudget ? 'tm-a11y-pinned-budget' : 'tm-a11y-pinned-over'}">
               <button class="tm-a11y-pin-remove" data-pin-index="0" aria-label="Unpin this seat">×</button>
-              <div class="tm-a11y-pinned-section">${s.section}</div>
-              ${s.row ? `<div class="tm-a11y-pinned-detail">Row ${s.row}${s.seatNumber ? ` · Seat ${s.seatNumber}` : ''}</div>` : ''}
+              <div class="tm-a11y-pinned-section">${esc(s.section)}</div>
+              ${s.row ? `<div class="tm-a11y-pinned-detail">Row ${esc(s.row)}${s.seatNumber ? ` · Seat ${esc(s.seatNumber)}` : ''}</div>` : ''}
               <div class="tm-a11y-pinned-price ${inBudget ? 'tm-a11y-price-budget' : 'tm-a11y-price-over'}">${symbol}${s.price.toFixed(2)}</div>
               ${s.qualityScore ? `<div class="tm-a11y-pinned-meta">View: ${(s.qualityScore * 100).toFixed(0)}%</div>` : ''}
               ${s.sellerType === 'resale' ? '<div class="tm-a11y-pinned-meta tm-a11y-pinned-resale">Resale</div>' : ''}
-              ${s.type !== 'standard' ? `<div class="tm-a11y-pinned-meta">${s.type.charAt(0).toUpperCase() + s.type.slice(1)}</div>` : ''}
+              ${s.type !== 'standard' ? `<div class="tm-a11y-pinned-meta">${esc(s.type.charAt(0).toUpperCase() + s.type.slice(1))}</div>` : ''}
             </div>
             <div class="tm-a11y-pinned-card tm-a11y-pinned-placeholder">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
@@ -2322,7 +2397,7 @@
       ? '<span class="tm-a11y-card-resale">Resale</span>' 
       : '';
     const typeBadge = seat.type && seat.type !== 'standard'
-      ? `<span class="tm-a11y-card-type">${seat.type.charAt(0).toUpperCase() + seat.type.slice(1)}</span>`
+      ? `<span class="tm-a11y-card-type">${esc(seat.type.charAt(0).toUpperCase() + seat.type.slice(1))}</span>`
       : '';
 
     // MCDA score badge
@@ -2450,16 +2525,114 @@
     });
 
     // === Profile selector ===
-    document.getElementById('tmA11yProfileSelect')?.addEventListener('change', (e) => {
-      const profileId = e.target.value;
-      if (profileId) {
-        applyProfile(profileId);
-      } else {
-        // "No Profile" selected — clear active profile but keep current settings
-        activeProfileId = null;
-        currentPreferences.activeProfileId = null;
-        broadcastPreferences();
-      }
+    // === Profile card Apply buttons ===
+    document.querySelectorAll('[data-profile-apply]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const profileId = btn.dataset.profileApply;
+        if (activeProfileId === profileId) {
+          // Clicking active profile deactivates it
+          activeProfileId = null;
+          currentPreferences.activeProfileId = null;
+          broadcastPreferences();
+        } else {
+          applyProfile(profileId);
+        }
+        renderPanelContent();
+      });
+    });
+
+    // === Profile card Delete buttons ===
+    document.querySelectorAll('[data-profile-delete]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const profileId = btn.dataset.profileDelete;
+        customProfiles = customProfiles.filter(p => p.id !== profileId);
+        if (activeProfileId === profileId) {
+          activeProfileId = null;
+          currentPreferences.activeProfileId = null;
+        }
+        window.postMessage({ source: 'tm-a11y-content', type: 'DELETE_PROFILE', profileId }, '*');
+        renderPanelContent();
+      });
+    });
+
+    // === Save Current Settings as Profile ===
+    document.getElementById('tmA11ySaveProfileBtn')?.addEventListener('click', () => {
+      const nameInput = document.getElementById('tmA11yNewProfileName');
+      const name = nameInput?.value?.trim();
+      if (!name) { if (nameInput) nameInput.placeholder = 'Please enter a name'; return; }
+      
+      const newProfile = {
+        id: 'profile_custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        name: name,
+        builtIn: false,
+        description: 'Custom profile saved on ' + new Date().toLocaleDateString('en-GB'),
+        settings: {
+          focusModeEnabled: currentPreferences.focusModeEnabled,
+          colourScheme: currentPreferences.colourScheme,
+          fontFamily: currentPreferences.fontFamily,
+          fontSize: currentPreferences.fontSize,
+          lineSpacing: currentPreferences.lineSpacing,
+          declutterEnabled: currentPreferences.declutterEnabled,
+          animationFreezeEnabled: currentPreferences.animationFreezeEnabled
+        },
+        mcdaWeights: { ...currentPreferences.mcdaWeights }
+      };
+      
+      customProfiles.push(newProfile);
+      window.postMessage({ source: 'tm-a11y-content', type: 'SAVE_PROFILES', profiles: customProfiles }, '*');
+      applyProfile(newProfile.id);
+      renderPanelContent();
+      console.log('[A11y Helper] Saved custom profile: ' + name);
+    });
+
+    // === Profile Export ===
+    document.getElementById('tmA11yProfileExport')?.addEventListener('click', () => {
+      const data = {
+        version: '8.0',
+        exported: new Date().toISOString(),
+        profiles: customProfiles
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'seat-finder-profiles.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // === Profile Import ===
+    document.getElementById('tmA11yProfileImport')?.addEventListener('click', () => {
+      document.getElementById('tmA11yProfileFileInput')?.click();
+    });
+
+    document.getElementById('tmA11yProfileFileInput')?.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          const imported = data.profiles || data;
+          if (!Array.isArray(imported)) throw new Error('Invalid format');
+          let count = 0;
+          for (const p of imported) {
+            if (p.name && p.settings && !p.builtIn) {
+              p.id = p.id || 'profile_custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+              if (!customProfiles.find(cp => cp.id === p.id)) {
+                customProfiles.push(p);
+                count++;
+              }
+            }
+          }
+          window.postMessage({ source: 'tm-a11y-content', type: 'SAVE_PROFILES', profiles: customProfiles }, '*');
+          renderPanelContent();
+          console.log(`[A11y Helper] Imported ${count} profile(s)`);
+        } catch (err) {
+          console.error('[A11y Helper] Profile import failed:', err);
+        }
+      };
+      reader.readAsText(file);
     });
 
     // Price sliders (synced across Seats + Filters tabs)
@@ -2951,13 +3124,23 @@
     }
 
     // === Auth: Login / Register / Logout ===
-    document.getElementById('tmA11yLoginBtn')?.addEventListener('click', () => {
+    // Hash passwords client-side before sending via postMessage to prevent
+    // plaintext passwords from being visible to other page scripts.
+    async function hashPw(password) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password + '_tm_a11y_salt_2025');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    document.getElementById('tmA11yLoginBtn')?.addEventListener('click', async () => {
       const email = document.getElementById('tmA11yLoginEmail')?.value;
       const password = document.getElementById('tmA11yLoginPass')?.value;
       const status = document.getElementById('tmA11yAuthStatus');
       if (!email || !password) { if (status) status.textContent = 'Enter email and password'; return; }
       if (status) status.textContent = 'Logging in...';
-      window.postMessage({ source: 'tm-a11y-content', type: 'AUTH_LOGIN', email, password }, '*');
+      const passwordHash = await hashPw(password);
+      window.postMessage({ source: 'tm-a11y-content', type: 'AUTH_LOGIN', email, passwordHash }, '*');
     });
 
     document.getElementById('tmA11yShowRegisterBtn')?.addEventListener('click', () => {
@@ -2974,7 +3157,7 @@
       if (reg) reg.style.display = 'none';
     });
 
-    document.getElementById('tmA11yRegisterBtn')?.addEventListener('click', () => {
+    document.getElementById('tmA11yRegisterBtn')?.addEventListener('click', async () => {
       const name = document.getElementById('tmA11yRegName')?.value;
       const email = document.getElementById('tmA11yRegEmail')?.value;
       const password = document.getElementById('tmA11yRegPass')?.value;
@@ -2982,7 +3165,8 @@
       if (!name || !email || !password) { if (status) status.textContent = 'Fill all fields'; return; }
       if (password.length < 6) { if (status) status.textContent = 'Password needs 6+ characters'; return; }
       if (status) status.textContent = 'Creating account...';
-      window.postMessage({ source: 'tm-a11y-content', type: 'AUTH_REGISTER', displayName: name, email, password }, '*');
+      const passwordHash = await hashPw(password);
+      window.postMessage({ source: 'tm-a11y-content', type: 'AUTH_REGISTER', displayName: name, email, passwordHash }, '*');
     });
 
     document.getElementById('tmA11yLogoutBtn')?.addEventListener('click', () => {

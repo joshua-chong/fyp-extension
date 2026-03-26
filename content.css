@@ -204,7 +204,7 @@
 
 .tm-a11y-panel-status {
   padding: 8px 14px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 500;
   color: var(--tm-a11y-panel-text-secondary);
   background: var(--tm-a11y-panel-bg);
@@ -216,8 +216,8 @@
 }
 
 .tm-a11y-status-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   display: inline-block;
   flex-shrink: 0;
@@ -239,7 +239,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 600;
   color: var(--tm-a11y-accent);
   background: rgba(62, 207, 142, 0.06);
@@ -316,7 +316,7 @@
 .tm-a11y-tab-btn {
   flex: 1;
   padding: 8px 4px;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   font-family: inherit;
   background: transparent;
@@ -395,8 +395,8 @@
 }
 
 .tm-a11y-stage-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   border: 2px solid var(--tm-a11y-panel-border, #2a2e3d);
   background: transparent;
@@ -405,7 +405,7 @@
 }
 
 .tm-a11y-stage-label {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--tm-a11y-panel-text-tertiary, #555a6b);
   text-transform: uppercase;
@@ -955,6 +955,18 @@
   object-fit: contain;
   flex-shrink: 0;
   filter: brightness(0) invert(1) opacity(0.85);
+}
+
+/* ── Venue confidence note (Level 4 inference warning) ── */
+.tm-a11y-venue-confidence-note {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 6px;
 }
 
 /* Dim icons for unavailable / unknown features */
@@ -3037,7 +3049,7 @@ g.tm-a11y-heat-t5 { opacity: 0.85 !important; }
 }
 
 .tm-a11y-toolcard-desc {
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--tm-a11y-panel-text-secondary, #8b90a0);
   margin: 0;
@@ -3113,4 +3125,101 @@ g.tm-a11y-heat-t5 { opacity: 0.85 !important; }
 .tm-a11y-toolcard-toggle:focus-visible {
   outline: 2px solid var(--tm-a11y-accent, #3ecf8e);
   outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SENSORY PROFILE CARDS
+   ══════════════════════════════════════════════════════════════ */
+ 
+.tm-a11y-profile-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+ 
+.tm-a11y-profile-card {
+  padding: 12px 14px;
+  background: var(--tm-a11y-panel-bg, #0d0f14);
+  border: 1px solid var(--tm-a11y-panel-border, #2a2e3d);
+  border-radius: 10px;
+  transition: border-color 0.15s;
+}
+ 
+.tm-a11y-profile-card.tm-a11y-profile-card-active {
+  border-color: var(--tm-a11y-accent, #3ecf8e);
+  background: rgba(62, 207, 142, 0.04);
+}
+ 
+.tm-a11y-profile-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+ 
+.tm-a11y-profile-card-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tm-a11y-panel-text, #e4e6eb);
+}
+ 
+.tm-a11y-profile-card-desc {
+  font-size: 11px;
+  color: var(--tm-a11y-panel-text-secondary, #8b90a0);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+ 
+.tm-a11y-profile-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(62, 207, 142, 0.1);
+  color: var(--tm-a11y-accent, #3ecf8e);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+ 
+.tm-a11y-profile-badge-custom {
+  background: rgba(139, 92, 246, 0.1);
+  color: #a78bfa;
+}
+ 
+.tm-a11y-profile-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+ 
+.tm-a11y-profile-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--tm-a11y-panel-text-tertiary, #7a7f91);
+}
+ 
+.tm-a11y-profile-card-actions {
+  display: flex;
+  gap: 6px;
+}
+ 
+/* Import / Export row */
+.tm-a11y-profile-io {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+ 
+.tm-a11y-profile-io .tm-a11y-toggle-btn {
+  flex: 1;
+  justify-content: center;
+  padding: 6px 10px;
+  font-size: 12px;
 }

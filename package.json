@@ -4,12 +4,17 @@
   "description": "Chrome Extension (Manifest V3) providing accessibility customisation for Ticketmaster seat-map pages. Designed to **reduce cognitive load** for neurodivergent users during ticket booking.",
   "main": "bridge.js",
   "scripts": {
-    "test": "jest --verbose"
+    "test": "jest --verbose --runInBand --detectOpenHandles"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "jest": "^30.3.0"
-  }
+    "jest": "^29.0.0"
+  },
+  "jest": {
+  "testMatch": ["**/*.test.js"],
+  "testPathIgnorePatterns": ["/node_modules/", "/fonts/", "/icons/", "/accessible-icons/"],
+  "modulePathIgnorePatterns": ["<rootDir>/node_modules/"]
+}
 }

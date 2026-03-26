@@ -419,6 +419,33 @@ function extractChildLinks(html, baseUrl) {
 
 
 // ══════════════════════════════════════════════════════════════
+// SECURITY FUNCTIONS (from content.js)
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Escape HTML special characters to prevent XSS.
+ */
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * SHA-256 hash with static salt (mirrors content.js hashPw).
+ * Node.js version using crypto module for testing.
+ */
+function hashPwSync(password) {
+  const crypto = require('crypto');
+  return crypto.createHash('sha256').update(password + '_tm_a11y_salt_2025').digest('hex');
+}
+
+
+// ══════════════════════════════════════════════════════════════
 // EXPORTS
 // ══════════════════════════════════════════════════════════════
 
@@ -433,5 +460,7 @@ module.exports = {
   // kNN engine
   kNN,
   // Background.js functions
-  normaliseName, lookupMap, htmlToText, extractChildLinks
+  normaliseName, lookupMap, htmlToText, extractChildLinks,
+  // Security
+  esc, hashPwSync
 };

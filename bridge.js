@@ -165,7 +165,7 @@
     }
 
     if (type === 'AUTH_LOGIN') {
-      const { email, password } = event.data;
+      const { email, passwordHash } = event.data;
       chrome.storage.local.get(['accounts'], async (result) => {
         const accounts = result.accounts || {};
         const emailLower = (email || '').toLowerCase().trim();
@@ -174,12 +174,8 @@
           window.postMessage({ source: 'tm-a11y-bridge', type: 'AUTH_LOGIN_RESULT', error: 'No account found' }, '*');
           return;
         }
-        // Hash password (SHA-256)
-        const encoder = new TextEncoder();
-        const data = encoder.encode((password || '') + '_tm_a11y_salt_2025');
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        if (account.passwordHash !== hashHex) {
+        // Password already hashed client-side — compare directly
+        if (account.passwordHash !== passwordHash) {
           window.postMessage({ source: 'tm-a11y-bridge', type: 'AUTH_LOGIN_RESULT', error: 'Incorrect password' }, '*');
           return;
         }
@@ -192,11 +188,11 @@
     }
 
     if (type === 'AUTH_REGISTER') {
-      const { displayName, email, password } = event.data;
+      const { displayName, email, passwordHash } = event.data;
       chrome.storage.local.get(['accounts'], async (result) => {
         const accounts = result.accounts || {};
         const emailLower = (email || '').toLowerCase().trim();
-        if (!displayName || !emailLower.includes('@') || !password || password.length < 6) {
+        if (!displayName || !emailLower.includes('@') || !passwordHash) {
           window.postMessage({ source: 'tm-a11y-bridge', type: 'AUTH_REGISTER_RESULT', error: 'Invalid input' }, '*');
           return;
         }
@@ -204,11 +200,8 @@
           window.postMessage({ source: 'tm-a11y-bridge', type: 'AUTH_REGISTER_RESULT', error: 'Account already exists' }, '*');
           return;
         }
-        const encoder = new TextEncoder();
-        const data = encoder.encode(password + '_tm_a11y_salt_2025');
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashHex = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-        accounts[emailLower] = { displayName, passwordHash: hashHex, createdAt: new Date().toISOString() };
+        // Password already hashed client-side — store directly
+        accounts[emailLower] = { displayName, passwordHash, createdAt: new Date().toISOString() };
         const session = { email: emailLower, displayName, createdAt: accounts[emailLower].createdAt };
         chrome.storage.local.set({ accounts, currentSession: session }, () => {
           window.postMessage({ source: 'tm-a11y-bridge', type: 'AUTH_REGISTER_RESULT', user: session }, '*');

@@ -334,25 +334,273 @@ async function googleSearchFallback(venueName) {
 }
 
 // ═══════════════════════════════════
-// Main orchestrator
+// AI-powered URL discovery (Level 2)
+// ═══════════════════════════════════
+
+/**
+ * Ask GPT-4o-mini to identify the venue's official website and accessibility page URL.
+ * Returns an array of candidate URLs to fetch, or null if unavailable.
+ */
+async function discoverUrlsWithAI(apiKey, venueName) {
+  if (!apiKey) return null;
+
+  const prompt = `You are a venue research assistant. Given a venue name, return its official website URL and the most likely accessibility/disabled access page URL.
+
+RULES:
+1. Only return URLs you are confident exist. Do not guess or fabricate URLs.
+2. If you don't know the venue, return an empty array.
+3. Return ONLY valid JSON — no markdown, no explanation.
+
+Format: {"urls": ["https://...", "https://..."], "domain": "example.com"}
+
+Venue: "${venueName}"`;
+
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 200,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!resp.ok) {
+      console.log('[A11y BG] AI URL discovery failed: HTTP ' + resp.status);
+      return null;
+    }
+
+    const data = await resp.json();
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const jsonStr = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(jsonStr);
+
+    if (parsed.urls && Array.isArray(parsed.urls) && parsed.urls.length > 0) {
+      console.log('[A11y BG] AI discovered ' + parsed.urls.length + ' URL(s) for "' + venueName + '"');
+      return { urls: parsed.urls.slice(0, 5), domain: parsed.domain || null };
+    }
+  } catch (e) {
+    console.log('[A11y BG] AI URL discovery error:', e.message);
+  }
+  return null;
+}
+
+/**
+ * Try fetching AI-discovered URLs with child link crawling.
+ * Same pattern as the known URL strategy but with AI-provided URLs.
+ */
+async function fetchFromAIDiscoveredUrls(apiKey, venueName) {
+  const discovery = await discoverUrlsWithAI(apiKey, venueName);
+  if (!discovery || !discovery.urls.length) return null;
+
+  const allTexts = [];
+  let primaryUrl = null;
+  const fetchedUrls = new Set();
+
+  // Fetch discovered URLs
+  for (const url of discovery.urls) {
+    if (fetchedUrls.has(url)) continue;
+    fetchedUrls.add(url);
+    const result = await tryFetchAny(url);
+    if (result) {
+      allTexts.push(result.text);
+      if (!primaryUrl) primaryUrl = result.url;
+
+      // Crawl child links from HTML pages
+      if (result.html) {
+        const children = extractChildLinks(result.html, url).slice(0, 3);
+        for (const child of children) {
+          if (!fetchedUrls.has(child)) {
+            fetchedUrls.add(child);
+            const childResult = await tryFetchAny(child);
+            if (childResult) allTexts.push(childResult.text);
+          }
+        }
+      }
+    }
+  }
+
+  // If AI gave us a domain but the specific URLs failed, try common paths
+  if (allTexts.length === 0 && discovery.domain) {
+    const base = 'https://www.' + discovery.domain.replace(/^www\./, '');
+    console.log('[A11y BG] AI URLs failed, trying paths on ' + base);
+    for (const path of ACCESSIBILITY_PATHS) {
+      const result = await tryFetchPage(base + path);
+      if (result) {
+        allTexts.push(result.text);
+        primaryUrl = result.url;
+        break;
+      }
+    }
+  }
+
+  if (allTexts.length > 0) {
+    const combined = allTexts.join('\n\n--- Next Page ---\n\n').substring(0, 20000);
+    console.log('[A11y BG] AI discovery: ' + allTexts.length + ' sources, ' + combined.length + ' chars');
+    return { text: combined, url: primaryUrl };
+  }
+
+  return null;
+}
+
+
+// ═══════════════════════════════════
+// AI venue inference (Level 4)
+// ═══════════════════════════════════
+
+/**
+ * When all page-fetching strategies fail, ask GPT-4o-mini to infer
+ * accessibility features from its training knowledge of the venue.
+ * Results are clearly marked as "ai_inference" rather than "ai_extraction".
+ */
+async function inferWithAI(apiKey, venueName) {
+  const DEFAULT = {
+    accessible_parking: 'not_specified',
+    accessible_entrance: 'not_specified',
+    accessible_seating: 'not_specified',
+    companion_seating: 'not_specified',
+    hearing_loop: 'not_specified',
+    service_animals: 'not_specified',
+    accessible_restrooms: 'not_specified',
+    quiet_space: 'not_specified',
+  };
+
+  if (!apiKey) return { ...DEFAULT, _error: 'no_api_key', _source: 'none' };
+
+  const prompt = `You are an accessibility information assistant. Based on your training knowledge, what accessibility features does this venue likely have?
+
+VENUE: "${venueName}"
+
+RULES:
+1. Use your general knowledge about this specific venue. If you recognise it, provide what you know.
+2. If you do NOT recognise this venue, return "not_specified" for ALL features. Do NOT guess based on venue type.
+3. Only use "yes" if you are reasonably confident the venue has this feature.
+4. Use "likely" if the venue type typically has it but you're not certain for this specific venue.
+5. Use "not_specified" if you genuinely don't know.
+
+Return ONLY valid JSON:
+{"accessible_parking":"...","accessible_entrance":"...","accessible_seating":"...","companion_seating":"...","hearing_loop":"...","service_animals":"...","accessible_restrooms":"...","quiet_space":"...","confidence":"high|medium|low"}`;
+
+  try {
+    const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!resp.ok) return { ...DEFAULT, _error: 'api_' + resp.status, _source: 'inference' };
+
+    const data = await resp.json();
+    const raw = (data.choices?.[0]?.message?.content || '').trim();
+    const jsonStr = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(jsonStr);
+
+    const VALID = ['yes', 'no', 'not_specified', 'likely'];
+    const result = {};
+    for (const key of Object.keys(DEFAULT)) {
+      result[key] = VALID.includes(parsed[key]) ? parsed[key] : 'not_specified';
+    }
+    result._confidence = parsed.confidence || 'low';
+    result._source = 'inference';
+    console.log('[A11y BG] AI inference for "' + venueName + '":', JSON.stringify(result));
+    return result;
+  } catch (e) {
+    console.log('[A11y BG] AI inference failed:', e.message);
+    return { ...DEFAULT, _error: 'inference_error', _source: 'inference' };
+  }
+}
+
+
+// ═══════════════════════════════════
+// Improved Google search fallback (Level 3)
+// ═══════════════════════════════════
+
+async function improvedGoogleFallback(venueName) {
+  // Try multiple query variants for better coverage
+  const queries = [
+    venueName + ' accessibility information',
+    venueName + ' disabled access',
+    '"' + venueName + '" accessibility page',
+  ];
+
+  for (const queryText of queries) {
+    try {
+      const query = encodeURIComponent(queryText);
+      const searchUrl = 'https://www.google.com/search?q=' + query + '&num=5';
+      const resp = await fetch(searchUrl, {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      if (!resp.ok) continue;
+      const html = await resp.text();
+
+      // Extract accessibility-related URLs
+      const urlPattern = /https?:\/\/[^"&\s<>]+(?:access|disab|parking|hearing|wheelchair)[^"&\s<>]*/gi;
+      const urlMatches = html.match(urlPattern) || [];
+      const candidates = urlMatches.filter(u =>
+        !u.includes('google.com') && !u.includes('gstatic.com') &&
+        !u.includes('youtube.com') && !u.includes('webcache') &&
+        !u.includes('facebook.com') && !u.includes('twitter.com') &&
+        !u.includes('instagram.com')
+      ).slice(0, 4);
+
+      if (candidates.length === 0) continue;
+
+      console.log('[A11y BG] Google fallback ("' + queryText + '"): ' + candidates.length + ' candidates');
+
+      const allTexts = [];
+      let primaryUrl = null;
+      for (const url of candidates) {
+        const result = await tryFetchAny(url);
+        if (result) {
+          allTexts.push(result.text);
+          if (!primaryUrl) primaryUrl = result.url;
+        }
+      }
+
+      if (allTexts.length > 0) {
+        const combined = allTexts.join('\n\n--- Next Page ---\n\n').substring(0, 20000);
+        return { text: combined, url: primaryUrl };
+      }
+    } catch (e) {
+      console.log('[A11y BG] Google fallback query failed:', e.message);
+    }
+  }
+  return null;
+}
+
+
+// ═══════════════════════════════════
+// Main orchestrator (4-level fallback)
 // ═══════════════════════════════════
 
 /**
  * Fetch all accessibility content for a venue.
- * 1. Fetch known URLs in parallel
- * 2. Discover + fetch child links (sub-pages, PDFs) from those pages
- * 3. Fall back to path guessing (with child crawling) or Google
- * 4. Merge all text
+ * 4-level fallback chain:
+ *   Level 1: Known URLs (pre-mapped, fastest)
+ *   Level 2: AI URL discovery (GPT-4o-mini finds the venue's accessibility page)
+ *   Level 3: Google search fallback (improved multi-query)
+ *   Level 4: AI inference (knowledge-based, clearly labelled)
+ * 
+ * Levels 1-3 return page text for extraction.
+ * Level 4 returns features directly (no page text).
  */
-async function fetchAccessibilityPage(venueName) {
+async function fetchAccessibilityPage(venueName, apiKey) {
   const allTexts = [];
   let primaryUrl = null;
 
-  // Strategy 1: Known URLs
+  // ── Level 1: Known URLs ──
   const knownUrls = lookupMap(VENUE_ACCESSIBILITY_URLS, venueName);
   if (knownUrls) {
     const urls = Array.isArray(knownUrls) ? knownUrls : [knownUrls];
-    console.log('[A11y BG] Fetching ' + urls.length + ' known URL(s)');
+    console.log('[A11y BG] L1: Fetching ' + urls.length + ' known URL(s)');
 
     const results = await Promise.all(urls.map(u => tryFetchAny(u)));
     const fetchedUrls = new Set(urls);
@@ -379,7 +627,7 @@ async function fetchAccessibilityPage(venueName) {
 
     if (childLinks.length > 0) {
       const toFetch = childLinks.slice(0, 4);
-      console.log('[A11y BG] Crawling ' + toFetch.length + ' child links');
+      console.log('[A11y BG] L1: Crawling ' + toFetch.length + ' child links');
       const childResults = await Promise.all(toFetch.map(u => tryFetchAny(u)));
       for (const r of childResults) {
         if (r) allTexts.push(r.text);
@@ -388,15 +636,15 @@ async function fetchAccessibilityPage(venueName) {
 
     if (allTexts.length > 0) {
       const combined = allTexts.join('\n\n--- Next Page ---\n\n').substring(0, 20000);
-      console.log('[A11y BG] Total: ' + allTexts.length + ' sources, ' + combined.length + ' chars');
-      return { text: combined, url: primaryUrl };
+      console.log('[A11y BG] L1 success: ' + allTexts.length + ' sources, ' + combined.length + ' chars');
+      return { text: combined, url: primaryUrl, level: 1 };
     }
   }
 
-  // Strategy 2: Path guessing with child crawling
+  // ── Level 1b: Path guessing on known domain ──
   const baseUrl = lookupMap(VENUE_DOMAINS, venueName);
   if (baseUrl) {
-    console.log('[A11y BG] Trying paths on ' + baseUrl);
+    console.log('[A11y BG] L1b: Trying paths on ' + baseUrl);
     for (const path of ACCESSIBILITY_PATHS) {
       const url = baseUrl + path;
       const result = await tryFetchPage(url);
@@ -410,14 +658,33 @@ async function fetchAccessibilityPage(venueName) {
           }
         }
         const combined = texts.join('\n\n--- Next Page ---\n\n').substring(0, 20000);
-        return { text: combined, url: result.url };
+        console.log('[A11y BG] L1b success: path guessing on ' + baseUrl);
+        return { text: combined, url: result.url, level: 1 };
       }
     }
   }
 
-  // Strategy 3: Google search fallback
-  console.log('[A11y BG] Google fallback for "' + venueName + '"');
-  return await googleSearchFallback(venueName);
+  // ── Level 2: AI URL discovery ──
+  if (apiKey) {
+    console.log('[A11y BG] L2: AI URL discovery for "' + venueName + '"');
+    const aiResult = await fetchFromAIDiscoveredUrls(apiKey, venueName);
+    if (aiResult) {
+      console.log('[A11y BG] L2 success');
+      return { ...aiResult, level: 2 };
+    }
+  }
+
+  // ── Level 3: Google search fallback ──
+  console.log('[A11y BG] L3: Google fallback for "' + venueName + '"');
+  const googleResult = await improvedGoogleFallback(venueName);
+  if (googleResult) {
+    console.log('[A11y BG] L3 success');
+    return { ...googleResult, level: 3 };
+  }
+
+  // ── Level 4: AI inference (no page text — handled in message handler) ──
+  console.log('[A11y BG] L1-3 all failed for "' + venueName + '". Will fall back to L4 inference.');
+  return null;
 }
 
 // ═══════════════════════════════════
@@ -516,8 +783,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     chrome.storage.sync.get(['openaiApiKey'], async (result) => {
       const apiKey = result.openaiApiKey || '';
-      const pageResult = await fetchAccessibilityPage(venueName);
-      const features = await extractWithOpenAI(apiKey, pageResult?.text || '', venueName);
+      const pageResult = await fetchAccessibilityPage(venueName, apiKey);
+
+      let features;
+      let dataSource;
+
+      if (pageResult && pageResult.text) {
+        // Levels 1-3 succeeded: extract features from page text
+        features = await extractWithOpenAI(apiKey, pageResult.text, venueName);
+        const levelLabels = { 1: 'ai_extraction', 2: 'ai_discovery', 3: 'google_extraction' };
+        dataSource = features._error
+          ? ('error_' + features._error)
+          : (levelLabels[pageResult.level] || 'ai_extraction');
+      } else {
+        // All page-fetching failed: try Level 4 AI inference
+        console.log('[A11y BG] L4: AI inference for "' + venueName + '"');
+        features = await inferWithAI(apiKey, venueName);
+        dataSource = features._error ? ('error_' + features._error) : 'ai_inference';
+      }
 
       // Store context for chatbot
       const contextSources = [];
@@ -532,7 +815,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         service_animals:     features.service_animals,
         accessible_restrooms: features.accessible_restrooms,
         quiet_space:         features.quiet_space,
-        data_source: features._error ? ('error_' + features._error) : (pageResult ? 'ai_extraction' : 'ai_no_page'),
+        data_source: dataSource,
+        data_level: pageResult?.level || 4,
         source_url: pageResult?.url || null,
         last_updated: Date.now(),
         venue_name: venueName,
@@ -540,8 +824,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         _contextSources: contextSources,
       };
       if (features._error) meta.error = features._error;
+      if (features._confidence) meta.confidence = features._confidence;
 
-      console.log('[A11y BG] Done: "' + venueName + '" (' + meta.data_source + ')');
+      console.log('[A11y BG] Done: "' + venueName + '" (L' + (pageResult?.level || 4) + ' ' + dataSource + ')');
       sendResponse({ meta });
     });
     return true;
@@ -618,4 +903,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'PING') { sendResponse({ pong: true }); return true; }
 });
 
-console.log('[A11y BG] Service worker v6.5.1 initialised');
+console.log('[A11y BG] Service worker v8.0 initialised (4-level fallback)');
